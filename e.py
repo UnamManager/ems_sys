@@ -11,9 +11,9 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 scope = ["https://spreadsheets.google.com/feeds",
          "https://www.googleapis.com/auth/drive"]
 
-creds_dict = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT"])
-
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name(
+    "em-system-488707-d7d44c582a7a.json", scope
+)
 client = gspread.authorize(creds)
 sheet = client.open("EMS")
 
