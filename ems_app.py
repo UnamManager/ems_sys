@@ -93,7 +93,7 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked)
 
 /* 선택된 메뉴 글씨 */
 section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) div {
-    color: white !important;
+    color: black !important;
     font-weight: 700;
 }
 
