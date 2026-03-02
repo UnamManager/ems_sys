@@ -52,17 +52,58 @@ h1 {
     font-weight: 800;
 }
 
-/* ===== 사이드바 ===== */
+/* =========================
+   ===== 사이드바 영역 =====
+   ========================= */
+
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #002b45 0%, #003d66 100%);
+    background: linear-gradient(180deg, #111827 0%, #1f2937 100%);
 }
 
-/* 사이드바 글씨 */
+/* 사이드바 기본 글씨 */
 section[data-testid="stSidebar"] * {
-    color: white !important;
+    color: #e5e7eb !important;
 }
 
-/* ===== 버튼 기본 ===== */
+/* 라디오 그룹 여백 */
+section[data-testid="stSidebar"] div[role="radiogroup"] {
+    margin-top: 20px;
+}
+
+/* 기본 메뉴 버튼 */
+section[data-testid="stSidebar"] div[role="radiogroup"] label {
+    background: rgba(255,255,255,0.05);
+    padding: 12px 14px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* 마우스 오버 */
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+    background: rgba(16,185,129,0.2);
+    border: 1px solid rgba(16,185,129,0.5);
+    transform: translateX(4px);
+}
+
+/* 선택된 메뉴 */
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+    background: linear-gradient(90deg, #10b981, #059669);
+    border: 1px solid #10b981;
+}
+
+/* 선택된 메뉴 글씨 */
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) div {
+    color: white !important;
+    font-weight: 700;
+}
+
+/* =========================
+   ===== 버튼 스타일 =====
+   ========================= */
+
 div.stButton > button {
     width: 100%;
     background: linear-gradient(90deg, #004c7a, #0077b6);
@@ -74,24 +115,28 @@ div.stButton > button {
     transition: 0.2s ease-in-out;
 }
 
-/* 버튼 호버 */
 div.stButton > button:hover {
     background: linear-gradient(90deg, #0077b6, #00b4d8);
     transform: scale(1.02);
 }
 
-/* ===== Selectbox ===== */
+/* =========================
+   ===== 입력창 스타일 =====
+   ========================= */
+
 div[data-baseweb="select"] {
     border-radius: 10px !important;
 }
 
-/* ===== 입력창 ===== */
 input, textarea {
     border-radius: 10px !important;
     border: 1px solid #cdd9e5 !important;
 }
 
-/* ===== 카드 스타일 ===== */
+/* =========================
+   ===== 카드 스타일 =====
+   ========================= */
+
 .card {
     background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     padding: 16px;
@@ -101,25 +146,29 @@ input, textarea {
     border-left: 5px solid #0077b6;
 }
 
-/* ===== 성공 메시지 ===== */
+/* =========================
+   ===== 메시지 색상 =====
+   ========================= */
+
 div.stSuccess {
     background-color: #e6f9f2;
     border-left: 5px solid #00b894;
 }
 
-/* ===== 경고 메시지 ===== */
 div.stWarning {
     background-color: #fff4e6;
     border-left: 5px solid #f39c12;
 }
 
-/* ===== 에러 메시지 ===== */
 div.stError {
     background-color: #ffe6e6;
     border-left: 5px solid #e74c3c;
 }
 
-/* ===== 모바일 최적화 ===== */
+/* =========================
+   ===== 모바일 최적화 =====
+   ========================= */
+
 @media (max-width: 768px) {
 
     h1 {
@@ -135,59 +184,6 @@ div.stError {
 
 </style>
 """, unsafe_allow_html=True)
-
-st.markdown("""
-<style>
-
-/* ===== 사이드바 배경 ===== */
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #111827 0%, #1f2937 100%);
-}
-
-/* 라디오 그룹 여백 */
-section[data-testid="stSidebar"] div[role="radiogroup"] {
-    margin-top: 20px;
-}
-
-/* 기본 메뉴 버튼 */
-section[data-testid="stSidebar"] div[role="radiogroup"] label {
-    background: rgba(255,255,255,0.05);
-    padding: 12px 14px;
-    border-radius: 12px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: 0.2s ease;
-    border: 1px solid rgba(255,255,255,0.08);
-}
-
-/* 글씨색 */
-section[data-testid="stSidebar"] div[role="radiogroup"] label div {
-    color: #e5e7eb !important;
-    font-weight: 500;
-}
-
-/* 마우스 오버 */
-section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-    background: rgba(16,185,129,0.2);
-    border: 1px solid rgba(16,185,129,0.5);
-    transform: translateX(4px);
-}
-
-/* 선택된 메뉴 (안전 방식) */
-section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-    background: linear-gradient(90deg, #10b981, #059669);
-    border: 1px solid #10b981;
-}
-
-/* 선택된 메뉴 글씨 */
-section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) div {
-    color: white !important;
-    font-weight: 700;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
 # =========================
 # 📩 이메일 알림
 # =========================
