@@ -350,5 +350,3 @@ elif choice == "관리자 페이지":
         
                 else:
                     st.error("해당 매물 없음")
-    elif pwd:
-        st.error("비밀번호 오류")
