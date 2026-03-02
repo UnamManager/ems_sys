@@ -89,7 +89,7 @@ choice = st.sidebar.selectbox("메뉴 선택", menu)
 # 데이터 로드 캐싱
 # ------------------------------
 @st.cache_data(show_spinner=False)
-def load_sheet_data():
+def load_sheet_data(sheets_to_load, columns):
     df_list = []
     for s in sheets_to_load:
         ws = sheet.worksheet(s)
@@ -307,7 +307,7 @@ elif choice == "관리자 페이지":
     # ⚙ 기존 관리자 기능
     # =========================
     with tab3:
-        df = load_sheet_data()
+        df = load_sheet_data(sheets_to_load, columns)
         st.dataframe(df)
 
         if st.button("데이터 새로고침"):
