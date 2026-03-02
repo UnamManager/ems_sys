@@ -6,7 +6,6 @@ from datetime import date, datetime
 from st_aggrid import AgGrid, GridOptionsBuilder
 from google.oauth2.service_account import Credentials
 from datetime import date
-import matplotlib.pyplot as plt
 import smtplib
 from email.mime.text import MIMEText
 
