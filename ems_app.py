@@ -58,7 +58,7 @@ section[data-testid="stSidebar"] {
 }
 
 /* 사이드바 기본 글씨 */
-section[data-testid="stSidebar"] * {
+section[data-testid="stSidebar"] div[role="radiogroup"] label div {
     color: #e5e7eb !important;
 }
 
