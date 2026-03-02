@@ -139,45 +139,67 @@ div.stError {
 st.markdown("""
 <style>
 
-/* ===== 사이드바 라디오 전체 영역 ===== */
+/* ===== 사이드바 배경 ===== */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+/* 사이드바 타이틀 숨기기 (깔끔하게) */
+section[data-testid="stSidebar"] label {
+    display: none;
+}
+
+/* ===== 라디오 그룹 간격 ===== */
 section[data-testid="stSidebar"] div[role="radiogroup"] {
-    gap: 8px;
+    margin-top: 20px;
+    gap: 10px;
 }
 
-/* ===== 각 라디오 항목 ===== */
+/* ===== 기본 메뉴 버튼 ===== */
 section[data-testid="stSidebar"] div[role="radiogroup"] label {
-    background: rgba(255,255,255,0.08);
-    padding: 12px 14px;
-    border-radius: 12px;
-    margin-bottom: 6px;
+    background: rgba(255,255,255,0.05);
+    padding: 14px 16px;
+    border-radius: 14px;
     cursor: pointer;
-    transition: 0.2s ease-in-out;
-    border: 1px solid rgba(255,255,255,0.15);
+    transition: all 0.25s ease;
+    border: 1px solid rgba(255,255,255,0.08);
+    font-weight: 500;
 }
 
-/* ===== 마우스 올렸을 때 ===== */
+/* 글씨 */
+section[data-testid="stSidebar"] div[role="radiogroup"] label div {
+    color: #cbd5e1 !important;
+    font-size: 15px;
+}
+
+/* ===== 마우스 호버 ===== */
 section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-    background: linear-gradient(90deg, #0077b6, #00b4d8);
-    transform: translateX(4px);
+    background: rgba(255,215,0,0.15);
+    transform: translateX(6px);
+    border: 1px solid rgba(255,215,0,0.4);
 }
 
 /* ===== 선택된 메뉴 ===== */
 section[data-testid="stSidebar"] input[type="radio"]:checked + div {
+    background: linear-gradient(90deg, #bfa14a, #f5d76e);
+    color: #0f172a !important;
     font-weight: 700;
+    border-radius: 14px;
+    padding: 14px 16px;
 }
 
-section[data-testid="stSidebar"] input[type="radio"]:checked + div::before {
-    content: "✔ ";
-    color: #00e5ff;
-    font-weight: bold;
+/* 선택된 항목 글씨 */
+section[data-testid="stSidebar"] input[type="radio"]:checked + div div {
+    color: #0f172a !important;
 }
 
-/* 선택된 항목 배경 */
-section[data-testid="stSidebar"] input[type="radio"]:checked ~ div {
-    background: linear-gradient(90deg, #004c7a, #0077b6);
-    color: white !important;
-    border-radius: 12px;
-    padding: 12px 14px;
+/* ===== 모바일 대응 ===== */
+@media (max-width: 768px) {
+
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        padding: 12px;
+    }
+
 }
 
 </style>
@@ -208,8 +230,15 @@ def send_email_notification(content):
 # ------------------------------
 # 메뉴
 # ------------------------------
-menu = ["통합 대시보드", "매물 조회", "관리자 페이지"]
-choice = st.sidebar.radio("메뉴 선택", menu)
+menu = [
+    "🏠 대시보드",
+    "📋 매물조회",
+    "📅 세대관람 예약",
+    "📊 세대관람 현황",
+    "⚙ 관리자 페이지"
+]
+
+choice = st.sidebar.radio("메뉴", menu)
 
 # ------------------------------
 # 데이터 로드 캐싱
