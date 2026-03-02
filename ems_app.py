@@ -41,41 +41,85 @@ sheet = client.open("EMS")
 st.markdown("""
 <style>
 
-/* 전체 배경 */
+/* ===== 전체 배경 ===== */
 .main {
-    background-color: #f4f7fa;
+    background: linear-gradient(180deg, #f4f7fb 0%, #eaf2f8 100%);
 }
 
-/* 사이드바 */
+/* ===== 상단 헤더 ===== */
+h1 {
+    color: #003366;
+    font-weight: 800;
+}
+
+/* ===== 사이드바 ===== */
 section[data-testid="stSidebar"] {
-    background-color: #002b45;
+    background: linear-gradient(180deg, #002b45 0%, #003d66 100%);
 }
 
-/* 버튼 공통 */
+/* 사이드바 글씨 */
+section[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+/* ===== 버튼 기본 ===== */
 div.stButton > button {
     width: 100%;
-    background-color: #004c7a;
+    background: linear-gradient(90deg, #004c7a, #0077b6);
     color: white;
-    border-radius: 10px;
+    border-radius: 12px;
     height: 3em;
     font-weight: 600;
+    border: none;
+    transition: 0.2s ease-in-out;
 }
 
-/* 입력창 */
-input, textarea, select {
-    border-radius: 8px !important;
+/* 버튼 호버 */
+div.stButton > button:hover {
+    background: linear-gradient(90deg, #0077b6, #00b4d8);
+    transform: scale(1.02);
 }
 
-/* 카드 스타일 */
+/* ===== Selectbox ===== */
+div[data-baseweb="select"] {
+    border-radius: 10px !important;
+}
+
+/* ===== 입력창 ===== */
+input, textarea {
+    border-radius: 10px !important;
+    border: 1px solid #cdd9e5 !important;
+}
+
+/* ===== 카드 스타일 ===== */
 .card {
-    background-color: white;
-    padding: 14px;
-    border-radius: 12px;
-    box-shadow: 0px 3px 12px rgba(0,0,0,0.08);
-    margin-bottom: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    padding: 16px;
+    border-radius: 14px;
+    box-shadow: 0px 4px 18px rgba(0,0,0,0.08);
+    margin-bottom: 14px;
+    border-left: 5px solid #0077b6;
 }
 
-/* 모바일 최적화 */
+/* ===== 성공 메시지 ===== */
+div.stSuccess {
+    background-color: #e6f9f2;
+    border-left: 5px solid #00b894;
+}
+
+/* ===== 경고 메시지 ===== */
+div.stWarning {
+    background-color: #fff4e6;
+    border-left: 5px solid #f39c12;
+}
+
+/* ===== 에러 메시지 ===== */
+div.stError {
+    background-color: #ffe6e6;
+    border-left: 5px solid #e74c3c;
+}
+
+/* ===== 모바일 최적화 ===== */
 @media (max-width: 768px) {
 
     h1 {
@@ -83,20 +127,8 @@ input, textarea, select {
         text-align: center;
     }
 
-    div.row-widget.stRadio > div {
-        flex-direction: column;
-    }
-
-    div.stSelectbox > div {
-        font-size: 14px;
-    }
-
-    div.stTextInput > div > input {
-        font-size: 14px;
-    }
-
     .card {
-        padding: 10px;
+        padding: 12px;
     }
 
 }
