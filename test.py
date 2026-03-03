@@ -4,8 +4,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 from st_aggrid import AgGrid, GridOptionsBuilder
-import smtplib
-from email.mime.text import MIMEText
 import json
 import os
 
@@ -33,22 +31,14 @@ sheet = client.open("EMS")
 st.markdown("""
 <style>
     .main {background-color: #f8f9fa;}
-    div[data-testid="stMetricValue"] { font-size: 28px; color: #004c7a; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: #f0f2f6;
-        border-radius: 5px 5px 0px 0px;
-    }
-    .stTabs [aria-selected="true"] { background-color: #004c7a !important; color: white !important; }
+    div[data-testid="stMetricValue"] { font-size: 24px; color: #004c7a; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align:center;color:#002b45;padding-bottom:20px;'>🏢 EMS 매물등록관리시스템</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align:center;color:#002b45;'>🏢 EMS 매물등록관리시스템</h1>", unsafe_allow_html=True)
 
 # ------------------------------
-# 데이터 로딩 함수 (캐싱 및 에러 방지)
+# 데이터 로딩 함수
 # ------------------------------
 @st.cache_data(show_spinner="데이터 동기화 중...", ttl=300)
 def load_all_data():
@@ -72,51 +62,30 @@ df_total = load_all_data()
 # ------------------------------
 # 사이드바 메뉴
 # ------------------------------
-with st.sidebar:
-    st.title("EMS Menu")
-    choice = st.selectbox("메뉴 선택", ["🏠 통합 대시보드", "🔍 매물 상세조회", "🔐 관리자 페이지"])
+choice = st.sidebar.selectbox("메뉴 선택", ["🏠 통합 대시보드", "🔍 매물 상세조회", "🔐 관리자 페이지"])
 
 # =========================
-# 1️⃣ 통합 대시보드 (에러 방지 로직 포함)
+# 1️⃣ 통합 대시보드
 # =========================
 if choice == "🏠 통합 대시보드":
     if df_total.empty:
-        st.warning("⚠️ 표시할 매물 데이터가 없습니다. 시트를 확인하거나 새로고침 해주세요.")
-        if st.button("데이터 다시 읽기"):
-            st.cache_data.clear()
-            st.rerun()
+        st.warning("⚠️ 데이터가 없습니다.")
     else:
-        # 상단 요약 지표 (ZeroDivisionError 방지)
         total_m = len(df_total)
         avail_m = len(df_total[df_total["거래여부"] == "관람가능"])
-        
         m1, m2, m3 = st.columns(3)
-        m1.metric("📌 전체 관리 매물", f"{total_m}개")
-        if total_m > 0:
-            m2.metric("✅ 현재 관람 가능", f"{avail_m}개", delta=f"{(avail_m/total_m*100):.1f}%")
-        else:
-            m2.metric("✅ 현재 관람 가능", "0개")
-        m3.metric("📅 오늘의 날짜", date.today().strftime("%m/%d"))
+        m1.metric("📌 전체 매물", f"{total_m}개")
+        m2.metric("✅ 관람 가능", f"{avail_m}개")
+        m3.metric("📅 오늘", date.today().strftime("%m/%d"))
 
         st.divider()
-
-        # 필터 섹션 (StreamlitAPIException 방지)
-        st.subheader("🔍 필터링")
-        f_col1, f_col2 = st.columns(2)
-        
-        danji_opt = df_total["단지"].unique().tolist()
-        danji_filter = f_col1.multiselect("단지 선택", danji_opt, default=danji_opt)
-        
         status_opt = df_total["거래여부"].unique().tolist()
-        # "관람가능"이 데이터에 있을 때만 기본값으로 설정
         status_default = ["관람가능"] if "관람가능" in status_opt else status_opt
-        status_filter = f_col2.multiselect("거래여부 필터", status_opt, default=status_default)
-
-        df_filtered = df_total[(df_total["단지"].isin(danji_filter)) & (df_total["거래여부"].isin(status_filter))]
-
-        gb = GridOptionsBuilder.from_dataframe(df_filtered)
+        st.multiselect("거래여부 필터", status_opt, default=status_default, key="main_filter")
+        
+        gb = GridOptionsBuilder.from_dataframe(df_total)
         gb.configure_pagination(paginationAutoPageSize=True)
-        AgGrid(df_filtered, gridOptions=gb.build(), height=500, theme='balham')
+        AgGrid(df_total, gridOptions=gb.build(), height=500, theme='balham')
 
 # =========================
 # 2️⃣ 매물 상세조회
@@ -126,7 +95,7 @@ elif choice == "🔍 매물 상세조회":
     sel_danji = c1.selectbox("단지 선택", ["1단지","2단지","3단지"])
     sel_type = c2.selectbox("거래유형", ["매매","임대"])
     df_view = df_total[(df_total["단지"] == sel_danji) & (df_total["거래유형"] == sel_type)]
-    st.dataframe(df_view, use_container_width=True, hide_index=True)
+    st.dataframe(df_view, use_container_width=True)
 
 # =========================
 # 3️⃣ 관리자 페이지
@@ -137,76 +106,98 @@ elif choice == "🔐 관리자 페이지":
         if pwd == ADMIN_PASSWORD:
             st.session_state.admin_auth = True
             st.rerun()
-        elif pwd: st.error("❌ 비밀번호 오류")
         st.stop()
 
-    tab1, tab2, tab3 = st.tabs(["📅 관람 예약등록", "📊 실시간 현황표", "⚙️ 시스템 관리"])
+    tab1, tab2, tab3 = st.tabs(["📅 예약등록", "📊 현황표", "⚙️ 관리"])
 
+    # --- 📅 예약등록 (에러 수정됨) ---
     with tab1:
-        res_danji = st.selectbox("단지 선택", ["1단지","2단지","3단지"])
+        res_danji = st.selectbox("단지 선택", ["1단지","2단지","3단지"], key="res_dj_box")
         f_unit = df_total[df_total["단지"] == res_danji]
         
-        with st.form("res_form", clear_on_submit=True):
-            name = st.text_input("예약자/업체명")
-            count = st.number_input("관람 세대수", 1, 3)
-            세대목록 = []
-            for i in range(count):
-                cols = st.columns(3)
-                dong = cols[0].selectbox(f"{i+1} 동", sorted(f_unit["동"].unique()), key=f"d_{i}")
-                ho = cols[1].selectbox(f"{i+1} 호", sorted(f_unit[f_unit["동"] == dong]["호수"].unique()), key=f"h_{i}")
-                m = f_unit[(f_unit["동"]==dong) & (f_unit["호수"]==ho)].iloc[0]
-                cols[2].info(f"{m['타입']} / {m['거래여부']}")
-                세대목록.append({"동":dong, "호수":ho, "타입":m['타입'], "상태":m['거래여부']})
-            
-            t_sel = st.selectbox("시간", [f"{h:02d}:00~{h+1:02d}:00" for h in range(8,21)])
-            if st.form_submit_button("예약 저장"):
-                if any(s["상태"] == "거래완료" for s in 세대목록):
-                    st.error("❌ 거래완료 세대 포함")
-                else:
-                    target = f"{res_danji}_관람예약" if int(t_sel[:2]) < 16 else "야간_관람예약"
-                    ws = sheet.worksheet(target)
-                    new_rows = [[date.today().strftime("%Y-%m-%d"), name, "", f"{count}세대", s["동"], s["호수"], s["타입"], t_sel, "", ""] for s in 세대목록]
-                    ws.append_rows(new_rows)
-                    st.success("✅ 예약 완료!")
-                    st.cache_data.clear()
-
-    with tab2:
-        v_dj = st.selectbox("현황 단지", ["1단지","2단지","3단지","야간"])
-        v_date = st.date_input("날짜", date.today())
-        ws_n = f"{v_dj}_관람예약" if v_dj != "야간" else "야간_관람예약"
-        data = sheet.worksheet(ws_n).get_all_values()
-        df_res = pd.DataFrame(data[1:], columns=["예약날짜","예약자","중개업소","관람세대수","동","호수","타입","예약시간","동행매니저","비고"])
-        df_today = df_res[df_res["예약날짜"] == v_date.strftime("%Y-%m-%d")]
-        if df_today.empty: st.info("예약 없음")
+        if f_unit.empty:
+            st.error("해당 단지에 매물 데이터가 없습니다.")
         else:
-            for _, r in df_today.iterrows():
-                with st.container(border=True):
-                    c1, c2 = st.columns([1, 2])
-                    c1.write(f"⏰ {r['예약시간']}")
-                    c2.write(f"🏠 {r['동']}동 {r['호수']}호 ({r['예약자']})")
+            with st.form("res_form_new"):
+                res_name = st.text_input("예약자/업체명")
+                res_count = st.number_input("관람 세대수", 1, 3, 1)
+                
+                final_list = []
+                has_error = False
+                
+                for i in range(res_count):
+                    c1, c2, c3 = st.columns(3)
+                    d_list = sorted(f_unit["동"].unique())
+                    d_val = c1.selectbox(f"{i+1} 동", d_list, key=f"res_d_{i}")
+                    
+                    h_list = sorted(f_unit[f_unit["동"] == d_val]["호수"].unique())
+                    h_val = c2.selectbox(f"{i+1} 호", h_list, key=f"res_h_{i}")
+                    
+                    # 💡 IndexError 방지 로직
+                    match = f_unit[(f_unit["동"]==d_val) & (f_unit["호수"]==h_val)]
+                    if not match.empty:
+                        m_info = match.iloc[0]
+                        c3.info(f"{m_info['타입']} / {m_info['거래여부']}")
+                        if m_info['거래여부'] == "거래완료": has_error = True
+                        final_list.append({"동":d_val, "호수":h_val, "타입":m_info['타입']})
+                
+                t_val = st.selectbox("시간", [f"{h:02d}:00~{h+1:02d}:00" for h in range(8,21)])
+                
+                # 💡 폼 제출 버튼 (Missing Submit Button 해결)
+                submitted = st.form_submit_button("예약 확정 저장")
+                
+                if submitted:
+                    if not res_name:
+                        st.error("예약자 이름을 입력해주세요.")
+                    elif has_error:
+                        st.error("거래완료된 세대가 포함되어 있습니다.")
+                    else:
+                        ws_target = f"{res_danji}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
+                        ws = sheet.worksheet(ws_target)
+                        rows = [[date.today().strftime("%Y-%m-%d"), res_name, "", f"{res_count}세대", s["동"], s["호수"], s["타입"], t_val, "", ""] for s in final_list]
+                        ws.append_rows(rows)
+                        st.success("✅ 예약이 저장되었습니다!")
+                        st.cache_data.clear()
 
+    # --- 📊 현황표 ---
+    with tab2:
+        v_dj = st.selectbox("조회 단지", ["1단지","2단지","3단지","야간"])
+        v_date = st.date_input("조회 날짜", date.today())
+        try:
+            ws_n = f"{v_dj}_관람예약" if v_dj != "야간" else "야간_관람예약"
+            v_data = sheet.worksheet(ws_n).get_all_values()
+            df_v = pd.DataFrame(v_data[1:], columns=["예약날짜","예약자","중개업소","관람세대수","동","호수","타입","예약시간","동행매니저","비고"])
+            df_v = df_v[df_v["예약날짜"] == v_date.strftime("%Y-%m-%d")]
+            if df_v.empty: st.info("예약 없음")
+            else: st.table(df_v[["예약시간", "동", "호수", "예약자"]])
+        except: st.error("시트를 불러올 수 없습니다.")
+
+    # --- ⚙️ 관리 ---
     with tab3:
-        st.subheader("📍 매물 상태 실시간 변경")
-        if st.button("🔄 전체 캐시 새로고침"):
+        if st.button("🔄 시스템 새로고침"):
             st.cache_data.clear()
             st.rerun()
+        
+        st.divider()
+        u_dj = st.selectbox("상태변경 단지", ["1단지","2단지","3단지"])
+        u_f = df_total[df_total["단지"] == u_dj]
+        if not u_f.empty:
+            c1, c2 = st.columns(2)
+            u_d = c1.selectbox("동", sorted(u_f["동"].unique()), key="u_d_sel")
+            u_h = c2.selectbox("호수", sorted(u_f[u_f["동"] == u_d]["호수"].unique()), key="u_h_sel")
             
-        u_dj = st.selectbox("단지 선택", ["1단지","2단지","3단지"])
-        u_unit = df_total[df_total["단지"] == u_dj]
-        u_dong = st.selectbox("동", sorted(u_unit["동"].unique()))
-        u_ho = st.selectbox("호수", sorted(u_unit[u_unit["동"] == u_dong]["호수"].unique()))
-        
-        curr = u_unit[(u_unit["동"]==u_dong) & (u_unit["호수"]==u_ho)].iloc[0]
-        st.write(f"현재: **{curr['거래여부']}**")
-        new_stat = st.radio("변경", ["관람가능", "거래완료"], horizontal=True)
-        
-        if st.button("💾 상태 즉시 반영"):
-            ws = sheet.worksheet(f"{u_dj}_{curr['거래유형']}")
-            all_v = ws.get_all_values()
-            for i, row in enumerate(all_v):
-                if row[2] == u_dong and row[3] == u_ho:
-                    ws.update_cell(i+1, 9, new_stat)
-                    break
-            st.success("업데이트 성공!")
-            st.cache_data.clear() # 💡 핵심 팁: 변경 후 캐시를 비워야 대시보드에 즉시 반영됨
-            st.rerun()
+            # 💡 상태변경 시에도 IndexError 방지
+            u_match = u_f[(u_f["동"]==u_d) & (u_f["호수"]==u_h)]
+            if not u_match.empty:
+                u_curr = u_match.iloc[0]
+                new_s = st.radio("상태 변경", ["관람가능", "거래완료"], index=0 if u_curr["거래여부"]=="관람가능" else 1)
+                if st.button("💾 즉시 반영"):
+                    ws = sheet.worksheet(f"{u_dj}_{u_curr['거래유형']}")
+                    vals = ws.get_all_values()
+                    for idx, r in enumerate(vals):
+                        if r[2] == u_d and r[3] == u_h:
+                            ws.update_cell(idx+1, 9, new_s)
+                            break
+                    st.success("반영 완료!")
+                    st.cache_data.clear()
+                    st.rerun()
