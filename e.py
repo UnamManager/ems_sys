@@ -61,7 +61,6 @@ def load_all_data():
                 df = pd.DataFrame(data[1:], columns=cols)
                 df["단지"] = s.split("_")[0]
                 df["거래유형"] = s.split("_")[1]
-                # 숫자 정렬을 위한 전처리
                 df["동_num"] = pd.to_numeric(df["동"], errors='coerce').fillna(0)
                 df["호_num"] = pd.to_numeric(df["호수"], errors='coerce').fillna(0)
                 df_list.append(df)
@@ -76,8 +75,8 @@ df_total = load_all_data()
 
 # 강조 UI 스타일 함수
 def color_status(val):
-    if val == "관람가능": color = '#d4edda' # 연초록
-    elif val == "거래완료": color = '#f8d7da' # 연빨강
+    if val == "관람가능": color = '#d4edda' 
+    elif val == "거래완료": color = '#f8d7da' 
     else: color = 'white'
     return f'background-color: {color}'
 
@@ -93,7 +92,7 @@ with st.sidebar:
         st.rerun()
 
 # =========================
-# 1️⃣ 📊 실시간 매물 현황
+# 1️⃣ 📊 실시간 매물 현황 (대시보드)
 # =========================
 if choice == "📊 실시간 매물 현황":
     st.title("📊 실시간 매물 현황")
@@ -105,11 +104,15 @@ if choice == "📊 실시간 매물 현황":
     st.divider()
     st.subheader("🏆 완료 세대 현황")
     df_done = df_total[df_total["거래여부"] == "거래완료"].copy()
-    view_cols = ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부"]
-    st.dataframe(df_done[view_cols].style.applymap(color_status, subset=['거래여부']), use_container_width=True, hide_index=True)
+    # 요청하신 컬럼 (호수 제외)
+    done_view_cols = ["분양구분", "동", "타입", "매물구분", "매매가", "월세", "거래여부"]
+    if not df_done.empty:
+        st.dataframe(df_done[done_view_cols].style.applymap(color_status, subset=['거래여부']), use_container_width=True, hide_index=True)
+    else:
+        st.info("완료된 매물이 없습니다.")
 
 # =========================
-# 2️⃣ 🔍 등록 매물 조회
+# 2️⃣ 🔍 등록 매물 조회 (컬럼 순서 고정)
 # =========================
 elif choice == "🔍 등록 매물 조회":
     st.title("🔍 등록 매물 조회")
@@ -127,10 +130,12 @@ elif choice == "🔍 등록 매물 조회":
     if s_type: df_v = df_v[df_v["타입"].isin(s_type)]
     if search_q: df_v = df_v[df_v["동"].str.contains(search_q) | df_v["호수"].str.contains(search_q)]
     
-    st.dataframe(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부"]].style.applymap(color_status, subset=['거래여부']), use_container_width=True, hide_index=True)
+    # 📱 모바일에서도 순서가 바뀌지 않도록 명시적 지정
+    main_view_cols = ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부"]
+    st.dataframe(df_v[main_view_cols].style.applymap(color_status, subset=['거래여부']), use_container_width=True, hide_index=True)
 
 # =========================
-# 3️⃣ 🔐 관리자 모드 (예약 로직 전면 개편)
+# 3️⃣ 🔐 관리자 모드
 # =========================
 elif choice == "🔐 관리자 모드":
     if not st.session_state.admin_auth:
@@ -146,55 +151,60 @@ elif choice == "🔐 관리자 모드":
         st.subheader("📅 세대관람 예약 등록")
         res_dj = st.selectbox("예약 단지 선택", ["1단지", "2단지", "3단지"])
         f_unit = df_total[df_total["단지"] == res_dj]
-        r_count = st.selectbox("관람 세대수 선택", [1, 2, 3], index=0)
+        r_count = st.selectbox("관람 세대수 선택", [1, 2, 3])
         
-        # 💡 [렉 해결] 동/호수 선택을 form 밖으로 꺼내어 실시간 반영 보장
         r_items = []
         for i in range(r_count):
             with st.container(border=True):
                 st.markdown(f"**📍 세대 선택 {i+1}**")
                 col1, col2 = st.columns(2)
-                # 정렬된 동/호수 리스트 제공
-                unique_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                d_sel = col1.selectbox("동", unique_dongs, key=f"d_live_{i}")
+                u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                d_sel = col1.selectbox("동", u_dongs, key=f"d_res_{i}")
                 
                 filtered_hos = f_unit[f_unit["동"]==d_sel]
-                unique_hos = sorted(filtered_hos["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                h_sel = col2.selectbox("호수", unique_hos, key=f"h_live_{i}")
+                u_hos = sorted(filtered_hos["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                h_sel = col2.selectbox("호수", u_hos, key=f"h_res_{i}")
                 
                 match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
                 if not match.empty:
                     m_row = match.iloc[0]
-                    # 상태 강조 표시
                     st.markdown(f"✅ 타입: **{m_row['타입']}** | 현재상태: **{m_row['거래여부']}**")
                     r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입'], "상태":m_row['거래여부']})
 
-        # 기타 정보 입력 (form)
-        with st.form("other_info_form"):
+        # --- ⏰ 시간 설정 (45분 단위 & 점심시간 제외) ---
+        time_options = []
+        for h in range(9, 21):
+            if h == 12: continue # 점심시간 12:00대 제외
+            time_str = f"{h:02d}:00 ~ {h:02d}:45"
+            time_options.append(time_str)
+
+        with st.form("final_reserve_form"):
             c1, c2 = st.columns(2)
             r_name = c1.text_input("예약자 성함")
             r_agency = c2.text_input("중개업소 명칭")
             r_manager = st.text_input("동행 매니저")
-            t_val = st.selectbox("방문 시간", [f"{h:02d}:00" for h in range(8,21)])
+            t_val = st.selectbox("방문 시간 (45분 관람)", time_options)
             memo_input = st.text_input("상세 메모")
             
             if st.form_submit_button("📅 예약 최종 확정", use_container_width=True):
                 if not r_name: st.error("예약자 성함을 입력해주세요.")
-                elif any(x["상태"] == "거래완료" for x in r_items): st.error("거래완료 세대가 포함되어 있습니다.")
+                elif any(x["상태"] == "거래완료" for x in r_items): st.error("거래완료 세대는 예약 불가합니다.")
                 else:
-                    target_ws = f"{res_dj}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
+                    # 16시 이후는 야간 시트로 분류 (기존 로직 유지)
+                    curr_hour = int(t_val[:2])
+                    target_ws = f"{res_dj}_관람예약" if curr_hour < 16 else "야간_관람예약"
                     ws = sheet.worksheet(target_ws)
-                    # 데이터 구조 (10열): 날짜, 예약자, 업소, 세대수, 동, 호수, 타입, 시간, 매니저, 비고
+                    
                     rows = [[date.today().strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, r_manager, memo_input] for s in r_items]
                     ws.append_rows(rows)
                     
                     # 메일 알림
-                    m_body = f"새로운 세대관람 예약\n- 예약자: {r_name}\n- 중개업소: {r_agency}\n- 시간: {t_val}\n- 매니저: {r_manager}\n\n[관람세대]\n"
+                    m_body = f"새로운 세대관람 예약\n예약자: {r_name}\n중개업소: {r_agency}\n시간: {t_val}\n매니저: {r_manager}\n\n[관람세대]\n"
                     for s in r_items: m_body += f"🏠 {s['동']}동 {s['호수']}호 ({s['타입']})\n"
                     m_body += f"\n- 메모: {memo_input}"
-                    send_email_notification(f"📢 [{res_dj}] 예약 알림: {r_name}님", m_body)
+                    send_email_notification(f"📢 [{res_dj}] 예약: {r_name}님 ({t_val})", m_body)
                     
-                    st.success("예약이 완료되었습니다!")
+                    st.success("✅ 예약이 정상적으로 완료되었습니다.")
                     st.cache_data.clear()
 
     with tab2:
@@ -203,31 +213,31 @@ elif choice == "🔐 관리자 모드":
             ws_n = f"{v_dj}_관람예약" if v_dj != "야간" else "야간_관람예약"
             v_data = sheet.worksheet(ws_n).get_all_values()
             df_c = pd.DataFrame(v_data[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","동행매니저","비고"])
+            st.write(f"### 📅 {date.today()} 관람 스케줄")
             st.dataframe(df_c[df_c['날짜'] == date.today().strftime("%Y-%m-%d")], use_container_width=True, hide_index=True)
         except: st.info("내역이 없습니다.")
 
     with tab3:
-        u_dj = st.selectbox("관리 단지", ["1단지", "2단지", "3단지"], key="m_dj")
+        u_dj = st.selectbox("상태 관리 단지", ["1단지", "2단지", "3단지"], key="m_dj_tab3")
         u_f = df_total[df_total["단지"]==u_dj]
         if not u_f.empty:
             c1, c2 = st.columns(2)
-            # 관리 페이지용 정렬
             u_dongs = sorted(u_f["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-            ud = c1.selectbox("동", u_dongs, key="m_d")
+            ud = c1.selectbox("동 선택", u_dongs, key="m_d_tab3")
             u_hos = sorted(u_f[u_f["동"]==ud]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-            uh = c2.selectbox("호수", u_hos, key="m_h")
+            uh = c2.selectbox("호수 선택", u_hos, key="m_h_tab3")
             
             match_u = u_f[(u_f["동"]==ud) & (u_f["호수"]==uh)]
             if not match_u.empty:
                 curr = match_u.iloc[0]
                 st.info(f"현재 상태: **{curr['거래여부']}**")
-                new_s = st.radio("상태 변경", ["관람가능", "거래완료"], index=0 if curr['거래여부']=="관람가능" else 1)
-                if st.button("💾 업데이트 저장", use_container_width=True):
+                new_s = st.radio("변경할 상태", ["관람가능", "거래완료"], index=0 if curr['거래여부']=="관람가능" else 1)
+                if st.button("💾 상태 업데이트 저장", use_container_width=True):
                     ws = sheet.worksheet(f"{u_dj}_{curr['거래유형']}")
                     for i, r in enumerate(ws.get_all_values()):
                         if r[2] == ud and r[3] == uh:
                             ws.update_cell(i+1, 9, new_s)
                             break
-                    st.success("반영 완료!")
+                    st.success("상태가 변경되었습니다.")
                     st.cache_data.clear()
                     st.rerun()
