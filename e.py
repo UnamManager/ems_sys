@@ -51,13 +51,15 @@ sheet = client.open("EMS")
 @st.cache_data(show_spinner="데이터 동기화 중...", ttl=300)
 def load_all_data():
     sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
-    cols = ["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부"]
+    # ✅ [수정] '비고' 컬럼을 리스트 마지막에 추가함
+    cols = ["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"]
     df_list = []
     for s in sheets:
         try:
             ws = sheet.worksheet(s)
             data = ws.get_all_values()
             if len(data) > 1:
+                # 시트의 실제 데이터 컬럼 수와 정의한 cols 수가 맞는지 확인하며 로드
                 df = pd.DataFrame(data[1:], columns=cols)
                 df["단지"] = s.split("_")[0]
                 df["거래유형"] = s.split("_")[1]
@@ -77,10 +79,9 @@ def load_all_data():
 
 df_total = load_all_data()
 
-# --- 🎨 UI 스타일 함수 (명칭 변경 적용) ---
+# --- 🎨 UI 스타일 함수 ---
 def apply_final_style(df, columns):
     df_styled = df.copy()
-    # 요청하신 새로운 명칭으로 변경
     rename_dict = {'매매가': '매매가/임대보증금 (만원)'}
     
     df_styled['매매가'] = df_styled['매매가_num']
@@ -118,8 +119,8 @@ if choice == "📊 실시간 매물 현황":
     st.subheader("🏆 완료 세대 현황")
     df_done = df_total[df_total["거래여부"] == "거래완료"].copy()
     if not df_done.empty:
-        # 호수 제외 컬럼 구성
-        done_cols = ["분양구분", "동", "타입", "매물구분", "매매가", "월세", "거래여부"]
+        # ✅ [수정] 완료 현황에도 '비고' 추가
+        done_cols = ["분양구분", "동", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]
         st.dataframe(apply_final_style(df_done, done_cols), use_container_width=True, hide_index=True)
     else: st.info("완료된 매물이 없습니다.")
 
@@ -130,6 +131,7 @@ elif choice == "🔍 등록 매물 조회":
     s_danji = f1.multiselect("단지", df_total["단지"].unique())
     s_bunyang = f2.multiselect("분양구분", df_total["분양구분"].unique())
     s_gubun = f3.multiselect("매물구분", df_total["매물구분"].unique())
+    # ✅ '상가'는 시트에 입력만 되어있다면 여기서 자동으로 인식되어 리스트에 뜹니다.
     s_type = f4.multiselect("타입", sorted(df_total["타입"].unique()))
     search_q = st.text_input("동 또는 호수 직접 검색")
     
@@ -140,7 +142,8 @@ elif choice == "🔍 등록 매물 조회":
     if s_type: df_v = df_v[df_v["타입"].isin(s_type)]
     if search_q: df_v = df_v[df_v["동"].str.contains(search_q) | df_v["호수"].str.contains(search_q)]
     
-    main_cols = ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부"]
+    # ✅ [수정] 조회 메인 화면에 '비고' 컬럼 노출
+    main_cols = ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]
     st.dataframe(apply_final_style(df_v, main_cols), use_container_width=True, hide_index=True)
 
 # --- 3번 메뉴: 관리자 모드 ---
@@ -231,6 +234,7 @@ elif choice == "🔐 관리자 모드":
                     ws = sheet.worksheet(f"{u_dj}_{curr['거래유형']}")
                     for i, r in enumerate(ws.get_all_values()):
                         if len(r) > 3 and r[2] == ud and r[3] == uh:
+                            # ✅ 시트 업데이트 시에도 9번째 열(거래여부)은 그대로 유지되도록 설정
                             ws.update_cell(i+1, 9, new_s)
                             break
                     st.success("완료")
