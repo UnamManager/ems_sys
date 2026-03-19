@@ -46,9 +46,9 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
-sheet = client.open("EMS")
+sheet = client.open("ems")
 
-@st.cache_data(show_spinner="데이터 동기화 중...", ttl=600)
+@st.cache_data(show_spinner="데이터 동기화 중...", ttl=300)
 def load_all_data():
     sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
     cols = ["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"]
