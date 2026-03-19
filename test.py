@@ -51,7 +51,7 @@ sheet = client.open("ems")
 @st.cache_data(show_spinner="데이터 동기화 중...", ttl=300)
 def load_all_data():
     sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
-    # ✅ [수정] 새로운 컬럼 구조 반영: 동호수(동,호 다음), 연락처(월세 다음)
+    # ✅ 컬럼 구성: NO(1), 분양구분(2), 동(3), 호수(4), 동호수(5), 타입(6), 매물구분(7), 매매가(8), 월세(9), 연락처(10), 거래여부(11), 비고(12)
     cols = ["NO.","분양구분","동","호수","동호수","타입","매물구분","매매가","월세","연락처","거래여부", "비고"]
     df_list = []
     for s in sheets:
@@ -59,8 +59,7 @@ def load_all_data():
             ws = sheet.worksheet(s)
             data = ws.get_all_values()
             if len(data) > 1:
-                # 시트의 실제 데이터 열 개수에 맞춰 슬라이싱 (혹시 모를 에러 방지)
-                df = pd.DataFrame(data[1:], columns=cols[:len(data[0])])
+                df = pd.DataFrame(data[1:], columns=cols)
                 df["단지"] = s.split("_")[0]
                 df["거래유형"] = s.split("_")[1]
                 
@@ -70,8 +69,7 @@ def load_all_data():
                 df["호_num"] = pd.to_numeric(df["호수"], errors='coerce').fillna(0)
                 
                 df_list.append(df)
-        except Exception as e:
-            continue
+        except: continue
     
     if df_list:
         full_df = pd.concat(df_list, ignore_index=True)
@@ -88,17 +86,15 @@ def apply_final_style(df, columns):
     df_styled['매매가'] = df_styled['매매가_num']
     df_styled['월세'] = df_styled['월세_num']
     
-    # 실제 존재하는 컬럼만 필터링해서 보여줌
-    available_cols = [c for c in columns if c in df_styled.columns or c in rename_dict]
-    df_display = df_styled[available_cols].rename(columns=rename_dict)
+    df_display = df_styled[columns].rename(columns=rename_dict)
     
     return df_display.style.applymap(
         lambda val: f'background-color: {"#d4edda" if val == "관람가능" else "#f8d7da" if val == "거래완료" else "white"}',
-        subset=['거래여부'] if '거래여부' in df_display.columns else []
+        subset=['거래여부']
     ).format({
         '매매가/임대보증금 (만원)': '{:,.0f}',
         '월세': '{:,.0f}'
-    }, na_rep="-")
+    })
 
 # =========================
 # 🏠 사이드바 메뉴
@@ -111,7 +107,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- 1번 메뉴 ---
+# --- 1번 메뉴: 실시간 매물 현황 ---
 if choice == "📊 실시간 매물 현황":
     st.title("📊 실시간 매물 현황")
     c1, c2, c3 = st.columns(3)
@@ -121,12 +117,12 @@ if choice == "📊 실시간 매물 현황":
     st.divider()
     df_done = df_total[df_total["거래여부"] == "거래완료"].copy()
     if not df_done.empty:
-        # ✅ '연락처' 추가 반영
-        done_cols = ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "연락처", "거래여부", "비고"]
+        # ✅ 완료 매물 리스트 순서 조정 (동호수, 연락처 포함)
+        done_cols = ["분양구분", "동호수", "타입", "매물구분", "매매가", "월세", "연락처", "거래여부", "비고"]
         st.dataframe(apply_final_style(df_done, done_cols), use_container_width=True, hide_index=True)
     else: st.info("완료된 매물이 없습니다.")
 
-# --- 2번 메뉴 ---
+# --- 2번 메뉴: 등록 매물 조회 ---
 elif choice == "🔍 등록 매물 조회":
     st.title("🔍 등록 매물 조회")
     f1, f2, f3, f4 = st.columns(4)
@@ -142,14 +138,14 @@ elif choice == "🔍 등록 매물 조회":
     if s_gubun: df_v = df_v[df_v["매물구분"].isin(s_gubun)]
     if s_type: df_v = df_v[df_v["타입"].isin(s_type)]
     if search_q: 
-        # ✅ '동호수' 컬럼에서도 검색 가능하도록 수정
+        # 검색 시 동, 호수, 동호수 전체에서 검색 가능하도록 설정
         df_v = df_v[df_v["동"].str.contains(search_q) | df_v["호수"].str.contains(search_q) | df_v["동호수"].str.contains(search_q)]
     
-    # ✅ '동호수'와 '연락처'를 목록에 포함
+    # ✅ [수정] 조회 리스트 순서 반영: 동호수(앞쪽), 연락처(월세 뒤쪽)
     main_cols = ["분양구분", "동호수", "타입", "매물구분", "매매가", "월세", "연락처", "거래여부", "비고"]
     st.dataframe(apply_final_style(df_v, main_cols), use_container_width=True, hide_index=True)
 
-# --- 3번 메뉴 --- (관리자 모드 로직은 동일하게 유지)
+# --- 3번 메뉴: 관리자 모드 ---
 elif choice == "🔐 관리자 모드":
     if not st.session_state.admin_auth:
         pwd = st.text_input("관리자 인증", type="password")
@@ -176,6 +172,7 @@ elif choice == "🔐 관리자 모드":
                 match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
                 if not match.empty:
                     m_row = match.iloc[0]
+                    # 예약 등록 시에도 동호수를 보여주어 실수 방지
                     st.markdown(f"✅ 동호수: **{m_row['동호수']}** | 타입: **{m_row['타입']}** | 상태: **{m_row['거래여부']}**")
                     r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입'], "상태":m_row['거래여부']})
 
@@ -200,7 +197,6 @@ elif choice == "🔐 관리자 모드":
                     st.success(f"✅ {f_date} 예약 완료")
                     st.cache_data.clear()
 
-    # (이하 현황 조회 및 상태 관리 탭은 동일 로직 유지)
     with tab2:
         st.subheader("📊 세대관람 스케줄 조회")
         v_dj = st.selectbox("조회 단지 선택", ["1단지", "2단지", "3단지", "야간"])
@@ -237,8 +233,7 @@ elif choice == "🔐 관리자 모드":
                     ws = sheet.worksheet(f"{u_dj}_{curr['거래유형']}")
                     for i, r in enumerate(ws.get_all_values()):
                         if len(r) > 3 and r[2] == ud and r[3] == uh:
-                            # ✅ 시트 컬럼 추가에 따라 '거래여부' 업데이트 열 번호 확인 필요 (기존 9 -> 현재 11번째)
-                            # cols 리스트 순서: NO(1), 분양(2), 동(3), 호수(4), 동호수(5), 타입(6), 매물구분(7), 매매가(8), 월세(9), 연락처(10), 거래여부(11)
+                            # ✅ 시트 컬럼이 늘어남에 따라 '거래여부' 업데이트 열을 11번째로 수정
                             ws.update_cell(i+1, 11, new_s)
                             break
                     st.success("완료")
