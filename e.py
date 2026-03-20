@@ -186,7 +186,7 @@ elif choice == "📅 세대관람 예약":
             else: st.info("예약 데이터가 없습니다.")
         except: st.error("데이터 로드 실패")
 
-# --- 4번 메뉴: 매물 통합 관리 (입력 방식 개선) ---
+# --- 4번 메뉴: 매물 통합 관리 (시트 이동 로직 추가) ---
 elif choice == "⚙️ 매물 통합 관리":
     if not st.session_state.admin_auth:
         pwd = st.text_input("관리자 인증", type="password")
@@ -195,7 +195,7 @@ elif choice == "⚙️ 매물 통합 관리":
             st.rerun()
         st.stop()
 
-    st.title("⚙️ 매물 통합 관리")
+    st.title("⚙️ 매물 통합 관리 (정보 수정 및 시트 이동)")
     col1, col2, col3 = st.columns(3)
     edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
     edit_dong = col2.text_input("동 입력 (숫자만)")
@@ -206,11 +206,13 @@ elif choice == "⚙️ 매물 통합 관리":
         
         if not target_df.empty:
             curr = target_df.iloc[0]
+            # 현재 이 매물이 살고 있는 원래 시트 이름 (예: 1단지_매매)
+            old_sheet_name = f"{edit_dj}_{curr['거래유형']}"
+            
             with st.form("edit_form"):
                 st.markdown(f"### 📝 {edit_dong}동 {edit_ho}호 정보 수정")
                 c1, c2, c3 = st.columns(3)
                 
-                # 1. 매물구분 (매매, 전세, 월세로 고정)
                 options = ["매매", "전세", "월세"]
                 default_idx = options.index(curr["매물구분"]) if curr["매물구분"] in options else 0
                 new_gubun = c1.selectbox("매물구분", options, index=default_idx)
@@ -220,46 +222,60 @@ elif choice == "⚙️ 매물 통합 관리":
                 
                 st.divider()
                 c4, c5, c6 = st.columns(3)
-                
-                # 2. 가격 입력 (숫자 증감 버튼 제거, 텍스트로 직접 입력)
-                # 소수점 제거를 위해 int형 변환 후 콤마 포함 문자열로 초기값 설정
-                raw_price = str(int(curr["매매가_num"]))
-                raw_monthly = str(int(curr["월세_num"]))
-                
-                new_price_str = c4.text_input("매매가/보증금 (만원)", value=raw_price, help="숫자만 입력하세요")
-                new_monthly_str = c5.text_input("월세 (만원)", value=raw_monthly, help="숫자만 입력하세요")
+                new_price_str = c4.text_input("매매가/보증금 (만원)", value=str(int(curr["매매가_num"])))
+                new_monthly_str = c5.text_input("월세 (만원)", value=str(int(curr["월세_num"])))
                 new_note = c6.text_input("비고", value=curr["비고"])
 
-                if st.form_submit_button("💾 수정 내용 저장"):
+                if st.form_submit_button("💾 수정 및 시트 이동 저장"):
                     try:
-                        # 입력값에서 혹시 모를 콤마나 공백 제거 후 정수 변환
                         clean_price = int(new_price_str.replace(',', '').strip())
                         clean_monthly = int(new_monthly_str.replace(',', '').strip())
-                        
-                        # 시트 저장용 콤마 포맷팅
                         formatted_price = f"{clean_price:,}"
                         formatted_monthly = f"{clean_monthly:,}"
                         
-                        ws = sheet.worksheet(f"{edit_dj}_{curr['거래유형']}")
-                        cell_list = ws.get_all_values()
+                        # 1. 새 시트 결정 로직 (매매면 '매매', 전세/월세면 '임대')
+                        new_type_suffix = "매매" if new_gubun == "매매" else "임대"
+                        new_sheet_name = f"{edit_dj}_{new_type_suffix}"
+                        
+                        # 원래 있던 시트에서 해당 행 찾기
+                        old_ws = sheet.worksheet(old_sheet_name)
+                        all_rows = old_ws.get_all_values()
                         row_idx = -1
-                        for i, r in enumerate(cell_list):
+                        for i, r in enumerate(all_rows):
                             if len(r) > 3 and r[2] == edit_dong and r[3] == edit_ho:
                                 row_idx = i + 1; break
                         
                         if row_idx != -1:
-                            # E(타입), F(매물구분), G(매매가), H(월세), I(거래여부), J(비고) 일괄 업데이트
-                            update_values = [[new_type, new_gubun, formatted_price, formatted_monthly, new_status, new_note]]
-                            ws.update(f'E{row_idx}:J{row_idx}', update_values)
+                            # 새 데이터 행 구성 (NO는 기존 거 유지)
+                            new_row_data = [
+                                all_rows[row_idx-1][0], # NO.
+                                all_rows[row_idx-1][1], # 분양구분
+                                edit_dong, 
+                                edit_ho, 
+                                new_type, 
+                                new_gubun, 
+                                formatted_price, 
+                                formatted_monthly, 
+                                new_status, 
+                                new_note
+                            ]
                             
-                            st.success(f"✅ {edit_dong}동 {edit_ho}호 정보가 수정되었습니다!")
+                            # 시트가 바뀌는 경우 (예: 매매 -> 전세)
+                            if old_sheet_name != new_sheet_name:
+                                new_ws = sheet.worksheet(new_sheet_name)
+                                new_ws.append_row(new_row_data) # 새 시트에 추가
+                                old_ws.delete_rows(row_idx)    # 기존 시트에서 삭제
+                                st.success(f"🚀 매물이 {new_sheet_name} 시트로 이동 및 수정되었습니다!")
+                            else:
+                                # 시트가 안 바뀌면 그냥 해당 행만 업데이트
+                                old_ws.update(f'E{row_idx}:J{row_idx}', [[new_type, new_gubun, formatted_price, formatted_monthly, new_status, new_note]])
+                                st.success("✅ 정보가 수정되었습니다!")
+                            
                             st.cache_data.clear()
                             st.rerun()
                         else:
-                            st.error("해당 매물의 행 번호를 찾을 수 없습니다.")
-                    except ValueError:
-                        st.error("⚠️ 가격과 월세는 숫자만 입력해주세요.")
+                            st.error("데이터를 찾을 수 없습니다.")
                     except Exception as e:
                         st.error(f"오류 발생: {e}")
         else:
-            st.warning("🔍 해당 매물을 찾을 수 없습니다. 단지/동/호를 확인해주세요.")
+            st.warning("🔍 매물을 찾을 수 없습니다.")
