@@ -147,4 +147,90 @@ elif choice == "📅 세대관람 예약":
                 col1, col2 = st.columns(2)
                 u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
                 d_sel = col1.selectbox("동", u_dongs, key=f"d_r_{i}")
-                u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"])
+                u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                h_sel = col2.selectbox("호수", u_hos, key=f"h_r_{i}")
+                match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
+                if not match.empty:
+                    m_row = match.iloc[0]
+                    st.markdown(f"✅ 타입: **{m_row['타입']}** | 상태: **{m_row['거래여부']}**")
+                    r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입'], "상태":m_row['거래여부']})
+
+        time_options = [f"{h:02d}:00 ~ {h:02d}:45" for h in range(9, 21) if h not in [12, 17, 20]]
+        with st.form("reserve_form"):
+            c1, c2 = st.columns(2)
+            r_date = c1.date_input("방문 날짜", date.today())
+            r_name = c2.text_input("예약자 성함")
+            r_agency = st.text_input("중개업소 명칭")
+            r_manager = st.text_input("동행 매니저")
+            t_val = st.selectbox("방문 시간", time_options)
+            memo_input = st.text_input("상세 메모")
+            if st.form_submit_button("📅 예약 최종 확정"):
+                if not r_name: st.error("성함을 입력해주세요.")
+                else:
+                    target_ws = f"{res_dj}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
+                    ws = sheet.worksheet(target_ws)
+                    f_date = r_date.strftime("%Y-%m-%d")
+                    rows = [[f_date, r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, r_manager, memo_input] for s in r_items]
+                    ws.append_rows(rows)
+                    st.success("예약 완료!")
+                    st.cache_data.clear()
+
+    with tab2:
+        v_dj = st.selectbox("조회 단지 선택", ["1단지", "2단지", "3단지", "야간"])
+        try:
+            ws_n = f"{v_dj}_관람예약" if v_dj != "야간" else "야간_관람예약"
+            v_data = sheet.worksheet(ws_n).get_all_values()
+            if len(v_data) > 1:
+                df_c = pd.DataFrame(v_data[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","동행매니저","비고"])
+                st.dataframe(df_c, use_container_width=True, hide_index=True)
+            else: st.info("예약 데이터가 없습니다.")
+        except: st.error("데이터 로드 실패")
+
+# --- 4번 메뉴: 매물 통합 관리 (오타 수정 및 전유 제거) ---
+elif choice == "⚙️ 매물 통합 관리":
+    if not st.session_state.admin_auth:
+        pwd = st.text_input("관리자 인증", type="password")
+        if pwd == ADMIN_PASSWORD:
+            st.session_state.admin_auth = True
+            st.rerun()
+        st.stop()
+
+    st.title("⚙️ 매물 통합 관리 (정보 수정)")
+    col1, col2, col3 = st.columns(3)
+    edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
+    edit_dong = col2.text_input("동 입력")
+    edit_ho = col3.text_input("호수 입력")
+
+    if edit_dong and edit_ho:
+        target_df = df_total[(df_total["단지"] == edit_dj) & (df_total["동"] == edit_dong) & (df_total["호수"] == edit_ho)]
+        
+        if not target_df.empty:
+            curr = target_df.iloc[0]
+            with st.form("edit_form"):
+                st.markdown(f"### 📝 {edit_dong}동 {edit_ho}호 정보 수정")
+                c1, c2, c3 = st.columns(3)
+                # ✅ '전유' 제거하고 실제 매물 구분으로 수정
+                new_gubun = c1.selectbox("매물구분", ["전세", "월세", "매매", "단기"], index=["전세", "월세", "매매", "단기"].index(curr["매물구분"]) if curr["매물구분"] in ["전세", "월세", "매매", "단기"] else 0)
+                new_type = c2.text_input("타입", value=curr["타입"])
+                new_status = c3.selectbox("거래상태", ["관람가능", "거래완료"], index=0 if curr["거래여부"] == "관람가능" else 1)
+                
+                c4, c5, c6 = st.columns(3)
+                new_price = c4.number_input("매매가/보증금 (만원)", value=float(curr["매매가_num"]), step=100.0)
+                new_monthly = c5.number_input("월세 (만원)", value=float(curr["월세_num"]), step=1.0)
+                new_note = c6.text_input("비고", value=curr["비고"])
+
+                if st.form_submit_button("💾 수정 내용 저장"):
+                    ws = sheet.worksheet(f"{edit_dj}_{curr['거래유형']}")
+                    cell_list = ws.get_all_values()
+                    row_idx = -1
+                    for i, r in enumerate(cell_list):
+                        if len(r) > 3 and r[2] == edit_dong and r[3] == edit_ho:
+                            row_idx = i + 1; break
+                    
+                    if row_idx != -1:
+                        # E열부터 J열까지 일괄 업데이트
+                        ws.update(f'E{row_idx}:J{row_idx}', [[new_type, new_gubun, f"{int(new_price):,}", f"{int(new_monthly):,}", new_status, new_note]])
+                        st.success("저장 완료!")
+                        st.cache_data.clear()
+                        st.rerun()
+        else: st.warning("매물을 찾을 수 없습니다.")
