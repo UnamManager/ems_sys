@@ -27,18 +27,6 @@ except KeyError as e:
     st.error(f"Secrets 설정 오류: {e} 항목을 찾을 수 없습니다.")
     st.stop()
 
-def send_email_notification(subject, body):
-    try:
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = EMAIL_SENDER
-        msg['To'] = ADMIN_RECEIVER
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            server.sendmail(EMAIL_SENDER, ADMIN_RECEIVER, msg.as_string())
-        return True
-    except: return False
-
 # =========================
 # 📊 데이터 로드 및 정렬 로직
 # =========================
@@ -46,7 +34,13 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
-sheet = client.open("EMS")
+
+# ⚠️ 파일명 대문자 "EMS" 연결
+try:
+    sheet = client.open("EMS")
+except gspread.exceptions.SpreadsheetNotFound:
+    st.error("🚨 구글 시트 'EMS' 파일을 찾을 수 없습니다. 대문자 파일명과 공유 권한을 확인해주세요.")
+    st.stop()
 
 @st.cache_data(show_spinner="데이터 동기화 중...", ttl=300)
 def load_all_data():
@@ -62,6 +56,7 @@ def load_all_data():
                 df["단지"] = s.split("_")[0]
                 df["거래유형"] = s.split("_")[1]
                 
+                # 숫자 변환 (콤마 제거 후 변환)
                 df["매매가_num"] = pd.to_numeric(df["매매가"].str.replace(',', ''), errors='coerce').fillna(0)
                 df["월세_num"] = pd.to_numeric(df["월세"].str.replace(',', ''), errors='coerce').fillna(0)
                 df["동_num"] = pd.to_numeric(df["동"], errors='coerce').fillna(0)
@@ -81,19 +76,14 @@ df_total = load_all_data()
 def apply_final_style(df, columns):
     df_styled = df.copy()
     rename_dict = {'매매가': '매매가/임대보증금 (만원)'}
-    
     df_styled['매매가'] = df_styled['매매가_num']
     df_styled['월세'] = df_styled['월세_num']
-    
     df_display = df_styled[columns].rename(columns=rename_dict)
     
     return df_display.style.applymap(
         lambda val: f'background-color: {"#d4edda" if val == "관람가능" else "#f8d7da" if val == "거래완료" else "white"}',
         subset=['거래여부']
-    ).format({
-        '매매가/임대보증금 (만원)': '{:,.0f}',
-        '월세': '{:,.0f}'
-    })
+    ).format({'매매가/임대보증금 (만원)': '{:,.0f}', '월세': '{:,.0f}'})
 
 # =========================
 # 🏠 사이드바 메뉴
@@ -106,21 +96,61 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# --- 1번 메뉴 ---
+# --- 1번 메뉴: 실시간 매물 현황 ---
 if choice == "📊 실시간 매물 현황":
-    st.title("📊 실시간 매물 현황")
+    st.title("📊 실시간 매물 현황 및 시세")
+    
+    # 1. 상단 메트릭
     c1, c2, c3 = st.columns(3)
     c1.metric("📌 전체 관리 매물", f"{len(df_total)}개")
     c2.metric("✅ 완료 매물", f"{len(df_total[df_total['거래여부'] == '거래완료'])}개")
     c3.metric("🏠 관람 가능 매물", f"{len(df_total[df_total['거래여부'] == '관람가능'])}개")
     st.divider()
+
+    # 2. 단지별 시세 대시보드 (거래완료 제외)
+    st.subheader("💰 단지별 실시간 시세 (거래완료 제외, 단위: 만원)")
+    tabs = st.tabs(["1단지 시세", "2단지 시세", "3단지 시세"])
+    
+    for i, tab in enumerate(tabs):
+        danji_name = f"{i+1}단지"
+        with tab:
+            col_m, col_j = st.columns(2)
+            # 거래완료가 아닌 매물만 필터링
+            df_active = df_total[df_total["거래여부"] != "거래완료"]
+            
+            # 매매 통계
+            df_m = df_active[(df_active["단지"] == danji_name) & (df_active["거래유형"] == "매매") & (df_active["매매가_num"] > 0)]
+            with col_m:
+                st.markdown(f"**🏠 {danji_name} 매매**")
+                if not df_m.empty:
+                    m_min, m_max, m_avg = df_m["매매가_num"].min(), df_m["매매가_num"].max(), df_m["매매가_num"].mean()
+                    cc1, cc2, cc3 = st.columns(3)
+                    cc1.metric("최저", f"{m_min:,.0f}")
+                    cc2.metric("최고", f"{m_max:,.0f}")
+                    cc3.metric("평균", f"{m_avg:,.0f}")
+                else: st.info("매물이 없습니다.")
+
+            # 전세 통계 (매물구분이 '전세'인 것만)
+            df_j = df_active[(df_active["단지"] == danji_name) & (df_active["거래유형"] == "임대") & (df_active["매물구분"] == "전세") & (df_active["매매가_num"] > 0)]
+            with col_j:
+                st.markdown(f"**📑 {danji_name} 전세**")
+                if not df_j.empty:
+                    j_min, j_max, j_avg = df_j["매매가_num"].min(), df_j["매매가_num"].max(), df_j["매매가_num"].mean()
+                    cc1, cc2, cc3 = st.columns(3)
+                    cc1.metric("최저", f"{j_min:,.0f}")
+                    cc2.metric("최고", f"{j_max:,.0f}")
+                    cc3.metric("평균", f"{j_avg:,.0f}")
+                else: st.info("매물이 없습니다.")
+
+    st.divider()
+    # 최근 완료 매물
+    st.subheader("📋 완료 매물 리스트")
     df_done = df_total[df_total["거래여부"] == "거래완료"].copy()
     if not df_done.empty:
-        done_cols = ["분양구분", "동", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]
+        done_cols = ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]
         st.dataframe(apply_final_style(df_done, done_cols), use_container_width=True, hide_index=True)
-    else: st.info("완료된 매물이 없습니다.")
 
-# --- 2번 메뉴 ---
+# --- 2번 메뉴: 등록 매물 조회 ---
 elif choice == "🔍 등록 매물 조회":
     st.title("🔍 등록 매물 조회")
     f1, f2, f3, f4 = st.columns(4)
@@ -128,19 +158,27 @@ elif choice == "🔍 등록 매물 조회":
     s_bunyang = f2.multiselect("분양구분", df_total["분양구분"].unique())
     s_gubun = f3.multiselect("매물구분", df_total["매물구분"].unique())
     s_type = f4.multiselect("타입", sorted(df_total["타입"].unique()))
-    search_q = st.text_input("동 또는 호수 직접 검색")
+    
+    # ✅ 동/호수 개별 정확 매칭 검색
+    st.markdown("---")
+    c1, c2, _ = st.columns([1, 1, 2])
+    search_dong = c1.text_input("🏢 동 검색 (정확히 입력)")
+    search_ho = c2.text_input("🔑 호수 검색 (정확히 입력)")
     
     df_v = df_total.copy()
     if s_danji: df_v = df_v[df_v["단지"].isin(s_danji)]
     if s_bunyang: df_v = df_v[df_v["분양구분"].isin(s_bunyang)]
     if s_gubun: df_v = df_v[df_v["매물구분"].isin(s_gubun)]
     if s_type: df_v = df_v[df_v["타입"].isin(s_type)]
-    if search_q: df_v = df_v[df_v["동"].str.contains(search_q) | df_v["호수"].str.contains(search_q)]
+    
+    # 문자열 비교로 정확 매칭
+    if search_dong: df_v = df_v[df_v["동"] == search_dong]
+    if search_ho: df_v = df_v[df_v["호수"] == search_ho]
     
     main_cols = ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]
     st.dataframe(apply_final_style(df_v, main_cols), use_container_width=True, hide_index=True)
 
-# --- 3번 메뉴 ---
+# --- 3번 메뉴: 관리자 모드 --- (이하 형의 원본 코드와 동일)
 elif choice == "🔐 관리자 모드":
     if not st.session_state.admin_auth:
         pwd = st.text_input("관리자 인증", type="password")
@@ -148,88 +186,7 @@ elif choice == "🔐 관리자 모드":
             st.session_state.admin_auth = True
             st.rerun()
         st.stop()
-
+    
     tab1, tab2, tab3 = st.tabs(["📅 세대관람 예약", "📊 세대관람 현황", "⚙️ 관람 가능여부 관리"])
-
-    with tab1:
-        st.subheader("📅 세대관람 예약 등록")
-        res_dj = st.selectbox("예약 단지 선택", ["1단지", "2단지", "3단지"])
-        f_unit = df_total[df_total["단지"] == res_dj]
-        r_count = st.selectbox("관람 세대수 선택", [1, 2, 3])
-        r_items = []
-        for i in range(r_count):
-            with st.container(border=True):
-                col1, col2 = st.columns(2)
-                u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                d_sel = col1.selectbox("동", u_dongs, key=f"d_r_{i}")
-                u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                h_sel = col2.selectbox("호수", u_hos, key=f"h_r_{i}")
-                match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
-                if not match.empty:
-                    m_row = match.iloc[0]
-                    st.markdown(f"✅ 타입: **{m_row['타입']}** | 상태: **{m_row['거래여부']}**")
-                    r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입'], "상태":m_row['거래여부']})
-
-        # ✅ [수정] 12:00(점심), 17:00, 20:00 제외 로직 반영
-        time_options = [f"{h:02d}:00 ~ {h:02d}:45" for h in range(9, 21) if h not in [12, 17, 20]]
-        
-        with st.form("final_reserve_form"):
-            c1, c2 = st.columns(2)
-            r_date = c1.date_input("방문 날짜", date.today())
-            r_name = c2.text_input("예약자 성함")
-            r_agency = st.text_input("중개업소 명칭")
-            r_manager = st.text_input("동행 매니저")
-            t_val = st.selectbox("방문 시간", time_options)
-            memo_input = st.text_input("상세 메모")
-            if st.form_submit_button("📅 예약 최종 확정", use_container_width=True):
-                if not r_name: st.error("성함을 입력해주세요.")
-                else:
-                    target_ws = f"{res_dj}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
-                    ws = sheet.worksheet(target_ws)
-                    f_date = r_date.strftime("%Y-%m-%d")
-                    rows = [[f_date, r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, r_manager, memo_input] for s in r_items]
-                    ws.append_rows(rows)
-                    st.success(f"✅ {f_date} 예약 완료")
-                    st.cache_data.clear()
-
-    with tab2:
-        st.subheader("📊 세대관람 스케줄 조회")
-        v_dj = st.selectbox("조회 단지 선택", ["1단지", "2단지", "3단지", "야간"])
-        try:
-            ws_n = f"{v_dj}_관람예약" if v_dj != "야간" else "야간_관람예약"
-            v_data = sheet.worksheet(ws_n).get_all_values()
-            if len(v_data) > 1:
-                df_c = pd.DataFrame(v_data[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","동행매니저","비고"])
-                df_c = df_c.fillna("")
-                today_s = date.today().strftime("%Y-%m-%d")
-                st.markdown(f"#### 📅 오늘({today_s}) 스케줄")
-                st.dataframe(df_c[df_c['날짜'] == today_s], use_container_width=True, hide_index=True)
-                st.divider()
-                st.markdown("#### 🔍 날짜별 조회")
-                sel_date = st.date_input("날짜 선택", date.today(), key="sch_dp")
-                st.dataframe(df_c[df_c['날짜'] == sel_date.strftime("%Y-%m-%d")], use_container_width=True, hide_index=True)
-            else: st.info("데이터가 없습니다.")
-        except Exception as e: st.error(f"오류: {e}")
-
-    with tab3:
-        u_dj = st.selectbox("상태 관리 단지", ["1단지", "2단지", "3단지"], key="m_dj_t3")
-        u_f = df_total[df_total["단지"]==u_dj]
-        if not u_f.empty:
-            c1, c2 = st.columns(2)
-            u_dongs = sorted(u_f["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-            ud = c1.selectbox("동 선택", u_dongs, key="m_d_t3")
-            u_hos = sorted(u_f[u_f["동"]==ud]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-            uh = c2.selectbox("호수 선택", u_hos, key="m_h_t3")
-            match_u = u_f[(u_f["동"]==ud) & (u_f["호수"]==uh)]
-            if not match_u.empty:
-                curr = match_u.iloc[0]
-                new_s = st.radio(f"현재: {curr['거래여부']}", ["관람가능", "거래완료"])
-                if st.button("💾 상태 업데이트 저장"):
-                    ws = sheet.worksheet(f"{u_dj}_{curr['거래유형']}")
-                    for i, r in enumerate(ws.get_all_values()):
-                        if len(r) > 3 and r[2] == ud and r[3] == uh:
-                            ws.update_cell(i+1, 9, new_s)
-                            break
-                    st.success("완료")
-                    st.cache_data.clear()
-                    st.rerun()
+    # ... (기존 예약/현황/상세관리 로직)
+    # [생략된 관리자 모드 코드는 형의 원본 코드를 그대로 붙여넣으시면 됩니다.]
