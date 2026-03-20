@@ -19,7 +19,7 @@ st.markdown("""
 # 🔐 보안 및 인증 설정
 # =========================
 ADMIN_PASSWORD_RES = "3090"     # 세대관람 예약용
-ADMIN_PASSWORD_MANAGE = "5050"  # 매물 통합 관리용 (형이 원하는 대로 수정 가능)
+ADMIN_PASSWORD_MANAGE = "ua0952"  # 매물 통합 관리용
 
 if "auth_res" not in st.session_state:
     st.session_state.auth_res = False
@@ -84,7 +84,7 @@ def apply_final_style(df, columns):
 # =========================
 with st.sidebar:
     st.markdown("### 🏢 EMS 관리 센터")
-    choice = st.radio("메뉴 이동", ["📊 실시간 매물 현황", "🔍 등록 매물 조회", "📅 세대관람 예약", "⚙️ 매물 통합 관리"])
+    choice = st.radio("메뉴 이동", ["📊 실시간 매물 현황", "🔍 등록 매물 조회", "📅 예약 관리자", "⚙️ 매물 통합 관리"])
     st.divider()
     if st.button("🔄 데이터 새로고침", use_container_width=True):
         st.cache_data.clear()
@@ -127,7 +127,7 @@ elif choice == "🔍 등록 매물 조회":
     st.dataframe(apply_final_style(df_v, ["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]), use_container_width=True, hide_index=True)
 
 # --- 3번 메뉴: 세대관람 예약 (PW: 3090) ---
-elif choice == "📅 세대관람 예약":
+elif choice == "📅 예약 관리자":
     if not st.session_state.auth_res:
         pwd = st.text_input("📅 예약 관리자 인증", type="password")
         if pwd == ADMIN_PASSWORD_RES:
@@ -197,7 +197,7 @@ elif choice == "⚙️ 매물 통합 관리":
         elif pwd: st.error("비밀번호가 틀렸습니다.")
         st.stop()
 
-    st.title("⚙️ 매물 통합 관리 (정보 수정 및 시트 자동 이사)")
+    st.title("⚙️ 매물 통합 관리")
     col1, col2, col3 = st.columns(3)
     edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
     edit_dong = col2.text_input("동 입력 (숫자만)")
