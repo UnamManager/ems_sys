@@ -147,4 +147,4 @@ elif choice == "📅 세대관람 예약":
                 col1, col2 = st.columns(2)
                 u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
                 d_sel = col1.selectbox("동", u_dongs, key=f"d_r_{i}")
-                u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"].
+                u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"])
