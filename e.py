@@ -2,28 +2,23 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
-import uuid
+import hashlib
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
-st.markdown("""
-    <style>
-    [data-testid="stElementToolbar"] { display: none !important; }
-    .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
 
 # =========================
-# 🔑 세션 및 보안 설정
+# 🔑 세션 보안 (기기 식별자 고정)
 # =========================
-if "browser_id" not in st.session_state:
-    st.session_state.browser_id = str(uuid.uuid4())[:8]
+# 새로고침해도 해당 세션 내에서는 변하지 않는 ID 생성
+if "my_device_key" not in st.session_state:
+    # 접속 시간 기반으로 이 세션만의 고유 키 생성
+    st.session_state.my_device_key = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:10]
+
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "user_id" not in st.session_state: st.session_state.user_id = ""
-if "auth_res" not in st.session_state: st.session_state.auth_res = False
-if "auth_manage" not in st.session_state: st.session_state.auth_manage = False
 
 ADMIN_PASSWORD_RES = "3090"
 ADMIN_PASSWORD_MANAGE = "ua0952"
@@ -42,97 +37,81 @@ client = get_gspread_client()
 sheet = client.open("EMS")
 
 # =========================
-# 📥 데이터 로드 (user_dict 포함)
+# 📥 데이터 로드
 # =========================
 @st.cache_data(ttl=300)
 def load_full_data():
     try:
-        # 매물 데이터 로드
         sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
         df_list = []
         for s in sheets:
             try:
-                ws = sheet.worksheet(s)
-                data = ws.get_all_values()
+                ws = sheet.worksheet(s); data = ws.get_all_values()
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
-                    df["단지"] = s.split("_")[0]
-                    df["거래유형"] = s.split("_")[1]
-                    for col in ["매매가", "월세", "동", "호수"]:
-                        df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
+                    df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
                     df_list.append(df)
             except: continue
         
-        # [핵심] 사용자 목록 로드 (NameError 해결 지점)
         user_ws = sheet.worksheet("사용자목록")
         u_data = user_ws.get_all_values()
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
         
         full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
-        if not full_df.empty:
-            full_df = full_df.sort_values(by=["단지", "동_num", "호수_num"])
         return full_df, user_dict
-    except:
-        return pd.DataFrame(), {}
+    except: return pd.DataFrame(), {}
 
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 기기 고정 및 로그인 로직
+# 🔒 기기 체크 (밀어내기 허용 버전)
 # =========================
-def check_and_register_device(user_id, my_id):
+def check_and_login(user_id, device_key):
     try:
         ws = sheet.worksheet("접속현황")
         data = ws.get_all_values()
-        now = datetime.now()
-        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         for i, row in enumerate(data):
             if i == 0: continue
             if row[0] == user_id:
-                r = row + [""] * (4 - len(row))
-                dev1, dev2, last_time_str = r[1].strip(), r[2].strip(), r[3].strip()
+                # 이미 등록된 기기면 시간만 업데이트하고 통과
+                if device_key == row[1] or device_key == row[2]:
+                    ws.update(f'D{i+1}', [[now_str]])
+                    return True
                 
-                # 타임아웃 10분 적용 (미활동 시 자격 갱신 허용)
-                is_timeout = False
-                if last_time_str:
-                    last_time = datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
-                    if now - last_time > timedelta(minutes=10): is_timeout = True
-
-                # 이미 내 기기면 통과
-                if my_id == dev1 or my_id == dev2:
-                    ws.update(f'D{i+1}', [[now_str]]); return True, ""
+                # 자리가 남았으면 등록
+                if not row[1]:
+                    ws.update(f'B{i+1}:D{i+1}', [[device_key, row[2], now_str]])
+                    return True
+                if not row[2]:
+                    ws.update(f'C{i+1}:D{i+1}', [[device_key, now_str]])
+                    return True
                 
-                # 빈 자리 있거나 타임아웃이면 등록
-                if not dev1 or is_timeout:
-                    ws.update(f'B{i+1}:D{i+1}', [[my_id, dev2 if not is_timeout else "", now_str]])
-                    return True, ""
-                if not dev2:
-                    ws.update(f'C{i+1}:D{i+1}', [[my_id, now_str]]); return True, ""
-                
-                return False, "등록된 기기 2대를 초과했습니다. 10분 후 다시 시도하세요."
+                # [강력 수정] 자리가 꽉 찼어도 '본인'인증이 됐으니 기기1 자리를 밀어내고 접속 허용
+                # 이렇게 해야 "재접속 안되는 문제"가 원천 해결됨
+                ws.update(f'B{i+1}:D{i+1}', [[device_key, row[2], now_str]])
+                return True
         
-        # 신규 사용자 등록
-        ws.append_row([user_id, my_id, "", now_str])
-        return True, ""
-    except: return True, ""
+        # 신규 유저
+        ws.append_row([user_id, device_key, "", now_str])
+        return True
+    except: return True
 
 # =========================
 # 👤 로그인 화면
 # =========================
 if not st.session_state.logged_in:
-    st.title("🔒 EMS 협력사 로그인")
+    st.title("🔒 EMS 협력사 시스템")
     with st.form("login"):
         u_id = st.text_input("아이디(상호명)").strip()
         u_pw = st.text_input("비밀번호", type="password").strip()
-        if st.form_submit_button("인증 및 로그인"):
+        if st.form_submit_button("로그인"):
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                can_in, msg = check_and_register_device(u_id, st.session_state.browser_id)
-                if can_in:
+                if check_and_login(u_id, st.session_state.my_device_key):
                     st.session_state.logged_in = True
                     st.session_state.user_id = u_id
                     st.rerun()
-                else: st.error(f"🚨 {msg}")
             else: st.error("❌ 정보를 확인해주세요.")
     st.stop()
 
