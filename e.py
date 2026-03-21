@@ -111,8 +111,8 @@ df_total, user_dict = load_full_data()
 if not st.session_state.logged_in:
     st.title("🔒 EMS 협력사 로그인")
     with st.form("login"):
-        u_id = st.text_input("아이디(상호명)").strip()
-        u_pw = st.text_input("비밀번호", type="password").strip()
+        u_id = st.text_input("ID(아이디)").strip()
+        u_pw = st.text_input("PW(비밀번호)", type="password").strip()
         login_btn = st.form_submit_button("로그인")
         
         if login_btn:
@@ -125,7 +125,7 @@ if not st.session_state.logged_in:
                         target_row = i + 1; current_db_key = r[1].strip(); break
                 
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🚨 다른 기기에서 사용 중입니다.")
+                    st.error("🚨 다른 사용자가 로그인 중입니다.")
                     st.session_state.pending_user = u_id
                 else:
                     if target_row != -1:
@@ -133,7 +133,7 @@ if not st.session_state.logged_in:
                     else:
                         ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
                     st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
-            else: st.error("❌ 정보를 확인해주세요.")
+            else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
         if st.button(f"👉 '{st.session_state.pending_user}' 내 세션으로 강제 접속하기 (다른 기기 종료)"):
@@ -148,7 +148,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 if not sync_session(st.session_state.user_id, st.session_state.session_key):
-    st.error("🚨 다른 기기에서 접속이 감지되어 종료되었습니다."); st.session_state.clear(); st.stop()
+    st.error("🚨 다른 사용자의 접속이 감지되어 종료되었습니다."); st.session_state.clear(); st.stop()
 
 # =========================
 # 🏠 메인 사이드바
@@ -256,7 +256,7 @@ elif choice == "📅 예약 관리자":
                     m_content = f"새로운 예약 등록!\n\n일시: {r_date_val} ({t_val})\n단지: {res_dj}\n예약자: {r_name}\n업소: {r_agency}\n세대: {r_items[0]['동']}동 {r_items[0]['호수']} 외 {r_count-1}건"
                     send_email_notification(m_content)
                     
-                    st.success("✅ 예약 완료 및 관리자 알림 발송!"); st.cache_data.clear()
+                    st.success("✅ 예약 완료 및 알림 발송!"); st.cache_data.clear()
 
     with tab2:
         v_dj = st.selectbox("조회 단지 선택", ["1단지", "2단지", "3단지", "야간"])
@@ -272,8 +272,8 @@ elif choice == "⚙️ 매물 관리자":
     st.title("⚙️ 매물 통합 관리")
     col1, col2, col3 = st.columns(3)
     edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
-    edit_dong = col2.text_input("동 입력 (숫자만)")
-    edit_ho = col3.text_input("호수 입력 (숫자만)")
+    edit_dong = col2.text_input("동 입력 (정확한 숫자를 입력하세요.)")
+    edit_ho = col3.text_input("호수 입력 (정확한 숫자를 입력하세요.)")
     if edit_dong and edit_ho:
         target_df = df_total[(df_total["단지"] == edit_dj) & (df_total["동"] == edit_dong) & (df_total["호수"] == edit_ho)]
         if not target_df.empty:
