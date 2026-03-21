@@ -56,31 +56,38 @@ def check_and_register_device(user_id, my_device):
         data = ws.get_all_values()
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
+        # 헤더 제외하고 데이터 찾기
         for i, row in enumerate(data):
+            if i == 0: continue # 헤더 스킵
             if row[0] == user_id:
-                dev1 = row[1] if len(row) > 1 else ""
-                dev2 = row[2] if len(row) > 2 else ""
+                # row의 길이를 안전하게 맞춤 (A:아이디, B:기기1, C:기기2, D:시간)
+                r = row + [""] * (4 - len(row))
+                dev1 = r[1].strip()
+                dev2 = r[2].strip()
                 
-                # 1. 이미 등록된 기기 중 하나인 경우 -> 통과
+                # 1. 이미 내 기기 중 하나라면 통과
                 if my_device == dev1 or my_device == dev2:
-                    ws.update(f'D{i+1}', [[now_str]]) # 마지막 활동 갱신
+                    ws.update(f'D{i+1}', [[now_str]])
                     return True, ""
                 
-                # 2. 빈 슬롯이 있으면 등록 후 통과
+                # 2. 첫 번째 자리가 비어있으면 등록
                 if not dev1:
                     ws.update(f'B{i+1}:D{i+1}', [[my_device, dev2, now_str]])
                     return True, ""
+                
+                # 3. 두 번째 자리가 비어있으면 등록
                 if not dev2:
-                    ws.update(f'B{i+1}:D{i+1}', [[dev1, my_device, now_str]])
+                    ws.update(f'C{i+1}:D{i+1}', [[my_device, now_str]])
                     return True, ""
                 
-                # 3. 빈 자리가 없으면 차단
-                return False, "등록된 기기(PC/모바일) 2대를 초과했습니다. 관리자에게 기기 초기화를 요청하세요."
+                # 4. 둘 다 꽉 찼는데 내 기기가 아니면 차단
+                return False, "이미 등록된 기기 2대(PC/모바일)가 꽉 찼습니다."
         
-        # 신규 아이디인 경우 첫 번째 슬롯에 등록
+        # 5. 아예 목록에 없는 신규 아이디라면 새로 추가
         ws.append_row([user_id, my_device, "", now_str])
         return True, ""
-    except: return True, ""
+    except Exception as e:
+        return True, "" # 에러 발생 시 일단 통과 (로그인 차단 방지)
 
 # --- 데이터 로드 (기존과 동일) ---
 @st.cache_data(ttl=300)
