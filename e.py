@@ -139,7 +139,7 @@ if not sync_session(st.session_state.user_id, st.session_state.session_key):
     st.stop()
 
 # =========================
-# 🏠 메인 메뉴
+# 🏠 메인 사이드바
 # =========================
 menu_options = ["📊 실시간 매물 현황", "🔍 등록 매물 조회"]
 if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
@@ -149,15 +149,23 @@ with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 접속 중")
     choice = st.radio("메뉴 이동", menu_options)
     st.divider()
-    # 관리자 인증 로직...
+    with st.expander("🛠️ 관리자 인증"):
+        pw_in = st.text_input("코드 입력", type="password")
+        if pw_in == ADMIN_PASSWORD_RES and not st.session_state.auth_res:
+            st.session_state.auth_res = True; st.rerun()
+        if pw_in == ADMIN_PASSWORD_MANAGE and not st.session_state.auth_manage:
+            st.session_state.auth_manage = True; st.rerun()
+    if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
     if st.button("🚪 로그아웃"):
+        # 로그아웃 시 시트의 세션 키를 삭제하여 다른 사람이 들어올 수 있게 함
         ws_status = sheet.worksheet("접속현황")
         all_status = ws_status.get_all_values()
         for i, r in enumerate(all_status):
             if r[0] == st.session_state.user_id:
-                ws_status.update(f'B{i+1}', [[""]])
+                ws_status.update(f'B{i+1}', [[""]]) # 키 삭제
                 break
-        st.session_state.clear(); st.rerun()
+        st.session_state.clear()
+        st.rerun()
         
 # --- 공통 스타일 함수 ---
 def apply_style(df):
