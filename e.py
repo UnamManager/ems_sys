@@ -8,17 +8,22 @@ import hashlib
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
+st.markdown("""
+    <style>
+    [data-testid="stElementToolbar"] { display: none !important; }
+    .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # =========================
-# 🔑 세션 보안 (기기 식별자 고정)
+# 🔑 세션 초기화
 # =========================
-# 새로고침해도 해당 세션 내에서는 변하지 않는 ID 생성
-if "my_device_key" not in st.session_state:
-    # 접속 시간 기반으로 이 세션만의 고유 키 생성
-    st.session_state.my_device_key = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:10]
-
+if "session_key" not in st.session_state:
+    st.session_state.session_key = str(uuid.uuid4())
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "user_id" not in st.session_state: st.session_state.user_id = ""
+if "auth_res" not in st.session_state: st.session_state.auth_res = False
+if "auth_manage" not in st.session_state: st.session_state.auth_manage = False
 
 ADMIN_PASSWORD_RES = "3090"
 ADMIN_PASSWORD_MANAGE = "ua0952"
@@ -36,83 +41,98 @@ def get_gspread_client():
 client = get_gspread_client()
 sheet = client.open("EMS")
 
-# =========================
-# 📥 데이터 로드
-# =========================
+# --- [입구 컷 로직] 중복 로그인 원천 봉쇄 ---
+def check_can_login(user_id):
+    try:
+        ws = sheet.worksheet("접속현황")
+        data = ws.get_all_values()
+        for row in data:
+            if row[0] == user_id:
+                # 마지막 활동 시간이 5분 이내면 사용 중으로 간주 (타임아웃 설정 가능)
+                last_time = datetime.strptime(row[2], "%Y-%m-%d %H:%M:%S")
+                if datetime.now() - last_time < timedelta(minutes=60):
+                    return False, "현재 다른 기기에서 사용 중인 아이디입니다."
+        return True, ""
+    except: return True, ""
+
+# 실시간 생존 신고 (접속 중임을 시트에 계속 알림)
+def report_alive(user_id, my_key):
+    try:
+        ws = sheet.worksheet("접속현황")
+        data = ws.get_all_values()
+        for i, row in enumerate(data):
+            if row[0] == user_id:
+                if row[1] != my_key: return False # 내 키가 아니면 쫓겨남
+                ws.update(f'C{i+1}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
+                return True
+        return False
+    except: return True
+
+# --- 데이터 로드 ---
 @st.cache_data(ttl=300)
 def load_full_data():
-    try:
-        sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
-        df_list = []
-        for s in sheets:
-            try:
-                ws = sheet.worksheet(s); data = ws.get_all_values()
-                if len(data) > 1:
-                    df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
-                    df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
-                    df_list.append(df)
-            except: continue
-        
-        user_ws = sheet.worksheet("사용자목록")
-        u_data = user_ws.get_all_values()
-        user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
-        
-        full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
-        return full_df, user_dict
-    except: return pd.DataFrame(), {}
+    sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
+    df_list = []
+    for s in sheets:
+        try:
+            ws = sheet.worksheet(s); data = ws.get_all_values()
+            if len(data) > 1:
+                df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
+                df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
+                for col in ["매매가", "월세", "동", "호수"]:
+                    df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
+                df_list.append(df)
+        except: continue
+    u_raw = sheet.worksheet("사용자목록").get_all_values()
+    user_dict = {row[0].strip(): row[1].strip() for row in u_raw[1:] if len(row) >= 2}
+    return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame(), user_dict
 
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 기기 체크 (밀어내기 허용 버전)
-# =========================
-def check_and_login(user_id, device_key):
-    try:
-        ws = sheet.worksheet("접속현황")
-        data = ws.get_all_values()
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        for i, row in enumerate(data):
-            if i == 0: continue
-            if row[0] == user_id:
-                # 이미 등록된 기기면 시간만 업데이트하고 통과
-                if device_key == row[1] or device_key == row[2]:
-                    ws.update(f'D{i+1}', [[now_str]])
-                    return True
-                
-                # 자리가 남았으면 등록
-                if not row[1]:
-                    ws.update(f'B{i+1}:D{i+1}', [[device_key, row[2], now_str]])
-                    return True
-                if not row[2]:
-                    ws.update(f'C{i+1}:D{i+1}', [[device_key, now_str]])
-                    return True
-                
-                # [강력 수정] 자리가 꽉 찼어도 '본인'인증이 됐으니 기기1 자리를 밀어내고 접속 허용
-                # 이렇게 해야 "재접속 안되는 문제"가 원천 해결됨
-                ws.update(f'B{i+1}:D{i+1}', [[device_key, row[2], now_str]])
-                return True
-        
-        # 신규 유저
-        ws.append_row([user_id, device_key, "", now_str])
-        return True
-    except: return True
-
-# =========================
-# 👤 로그인 화면
+# 🔒 로그인 화면 (입구 컷 적용)
 # =========================
 if not st.session_state.logged_in:
-    st.title("🔒 EMS 협력사 시스템")
+    st.title("🔒 EMS 협력사 로그인")
     with st.form("login"):
         u_id = st.text_input("아이디(상호명)").strip()
         u_pw = st.text_input("비밀번호", type="password").strip()
         if st.form_submit_button("로그인"):
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                if check_and_login(u_id, st.session_state.my_device_key):
+                # [핵심] 로그인 전 중복 체크
+                can_login, msg = check_can_login(u_id)
+                if not can_login:
+                    st.error(f"🚨 {msg}")
+                else:
+                    # 접속 정보 기록
+                    ws_status = sheet.worksheet("접속현황")
+                    all_status = ws_status.get_all_values()
+                    exists = False
+                    for i, r in enumerate(all_status):
+                        if r[0] == u_id:
+                            ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
+                            exists = True; break
+                    if not exists: ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+                    
                     st.session_state.logged_in = True
                     st.session_state.user_id = u_id
                     st.rerun()
             else: st.error("❌ 정보를 확인해주세요.")
+    st.stop()
+
+# [중복 접속 실시간 체크]
+if not sync_session(st.session_state.user_id, st.session_state.session_key):
+    st.error("🚨 다른 기기에서 로그인이 감지되어 이 세션은 종료되었습니다.")
+    st.info("중복 로그인을 방지하기 위해 한 아이디당 하나의 브라우저만 허용됩니다.")
+    if st.button("내 세션으로 다시 접속하기 (다른 기기 튕겨냄)"):
+        # 내 키로 DB를 갱신해버림
+        ws_status = sheet.worksheet("접속현황")
+        all_status = ws_status.get_all_values()
+        for i, r in enumerate(all_status):
+            if r[0] == st.session_state.user_id:
+                ws_status.update(f'B{i+1}', [[st.session_state.session_key]])
+                break
+        st.rerun()
     st.stop()
 
 # =========================
