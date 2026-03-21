@@ -57,21 +57,25 @@ df_users = get_user_list()
 # =========================
 # 🔒 [1단계] 협력사 로그인 화면
 # =========================
-if not st.session_state.logged_in:
-    st.title("🔒 EMS 협력사 전용 시스템")
-    st.info("본 시스템은 등록된 협력 중개업소만 이용 가능합니다.")
-    with st.form("login_form"):
-        u_id = st.text_input("협력사 아이디 (상호명)")
-        u_pw = st.text_input("비밀번호", type="password")
-        if st.form_submit_button("로그인"):
-            match = df_users[(df_users["ID"].astype(str) == u_id) & (df_users["PW"].astype(str) == u_pw)]
-            if not match.empty:
-                st.session_state.logged_in = True
-                st.session_state.user_id = u_id
-                st.rerun()
-            else:
-                st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
-    st.stop()
+
+if st.form_submit_button("로그인"):
+    # 입력값 앞뒤 공백 제거 및 문자열 변환
+    input_id = str(u_id).strip()
+    input_pw = str(u_pw).strip()
+    
+    # 시트 데이터도 앞뒤 공백 제거 후 비교
+    # ID와 PW 열을 문자열로 변환하고 공백 제거
+    df_users['ID'] = df_users['ID'].astype(str).str.strip()
+    df_users['PW'] = df_users['PW'].astype(str).str.strip()
+    
+    match = df_users[(df_users["ID"] == input_id) & (df_users["PW"] == input_pw)]
+    
+    if not match.empty:
+        st.session_state.logged_in = True
+        st.session_state.user_id = input_id
+        st.rerun()
+    else:
+        st.error("아이디 또는 비밀번호가 일치하지 않습니다. (공백이나 대소문자를 확인하세요)")
 
 # =========================
 # 🏠 [2단계] 메인 시스템 (로그인 성공 후)
