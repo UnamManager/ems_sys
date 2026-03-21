@@ -6,14 +6,14 @@ from datetime import date, datetime
 import json
 
 # 1. 페이지 설정 및 보안 강화 (CSV 다운로드 버튼 숨기기)
-st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
-st.markdown("""
-    <style>
-    [data-testid="stElementToolbar"] {
-        display: none !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+#st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
+#st.markdown("""
+#    <style>
+#    [data-testid="stElementToolbar"] {
+#        display: none !important;
+#   }
+#    </style>
+#    """, unsafe_allow_html=True)
 
 # =========================
 # 🔐 보안 및 인증 설정
