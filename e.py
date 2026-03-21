@@ -125,7 +125,7 @@ if not st.session_state.logged_in:
                         target_row = i + 1; current_db_key = r[1].strip(); break
                 
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🚨 다른 사용자가 로그인 중입니다.")
+                    st.error("🚨 현재 이 계정에 다른 사용자가 접속 중 입니다.")
                     st.session_state.pending_user = u_id
                 else:
                     if target_row != -1:
@@ -136,7 +136,7 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"👉 '{st.session_state.pending_user}' 내 세션으로 강제 접속하기 (다른 기기 종료)"):
+        if st.button(f"👉 '{st.session_state.pending_user}' 해당 기기로 접속하시겠습니까?(다른 기기 종료)"):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
@@ -153,7 +153,7 @@ if not sync_session(st.session_state.user_id, st.session_state.session_key):
 # =========================
 # 🏠 메인 사이드바
 # =========================
-menu_options = ["📊 실시간 매물 현황", "🔍 등록 매물 조회"]
+menu_options = ["📊 실시간 매물등록 현황", "🔍 등록 매물 조회"]
 if st.session_state.auth_res: menu_options.append("📅 예약 관리자")
 if st.session_state.auth_manage: menu_options.append("⚙️ 매물 관리자")
 
@@ -185,8 +185,8 @@ def apply_style(df):
 # =========================
 # 📋 페이지별 로직 (예약 등록 시 메일 발송 연동)
 # =========================
-if choice == "📊 실시간 매물 현황":
-    st.title("📊 실시간 매물 현황")
+if choice == "📊 실시간 매물등록 현황":
+    st.title("📊 실시간 매물등록 현황")
     c1, c2, c3 = st.columns(3)
     c1.metric("📌 전체", f"{len(df_total)}개")
     c2.metric("✅ 거래완료", f"{len(df_total[df_total['거래여부']=='거래완료'])}개")
