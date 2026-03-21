@@ -125,7 +125,7 @@ if not st.session_state.logged_in:
                         target_row = i + 1; current_db_key = r[1].strip(); break
                 
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🚨 현재 이 계정에 다른 사용자가 접속 중 입니다.")
+                    st.error("🚨 다른 기기에서 사용 중입니다.")
                     st.session_state.pending_user = u_id
                 else:
                     if target_row != -1:
@@ -136,7 +136,7 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"👉 '{st.session_state.pending_user}' 해당 기기로 접속하시겠습니까?(다른 기기 종료)"):
+        if st.button(f"👉 '{st.session_state.pending_user}'님의 다른 기기 접속을 종료하고 사용을 계속하시겠습니까? "):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
