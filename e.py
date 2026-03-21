@@ -133,8 +133,8 @@ if not sync_session(st.session_state.user_id, st.session_state.session_key):
 # 🏠 메인 사이드바
 # =========================
 menu_options = ["📊 실시간 매물 현황", "🔍 등록 매물 조회"]
-if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
-if st.session_state.auth_manage: menu_options.append("⚙️ 매물 통합 관리")
+if st.session_state.auth_res: menu_options.append("📅 예약 관리자")
+if st.session_state.auth_manage: menu_options.append("⚙️ 매물 관리자")
 
 with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 접속 중")
@@ -193,13 +193,13 @@ elif choice == "🔍 등록 매물 조회":
     if search_ho: df_v = df_v[df_v["호수"] == search_ho]
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
-elif choice == "📅 세대관람 예약":
+elif choice == "📅 예약 관리자":
     st.title("📅 세대관람 예약 관리")
     tab1, tab2 = st.tabs(["📅 예약 등록", "📊 예약 현황"])
     with tab1:
         res_dj = st.selectbox("예약 단지 선택", ["1단지", "2단지", "3단지"])
         f_unit = df_total[df_total["단지"] == res_dj]
-        r_count = st.selectbox("관람 세대수 선택", [1, 2, 3])
+        r_count = st.selectbox("관람 세대수 선택", [1, 2])
         r_items = []
         for i in range(r_count):
             with st.container(border=True):
@@ -213,7 +213,7 @@ elif choice == "📅 세대관람 예약":
                     m_row = match.iloc[0]
                     st.markdown(f"✅ 타입: **{m_row['타입']}** | 상태: **{m_row['거래여부']}**")
                     r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입']})
-        time_options = [f"{h:02d}:00 ~ {h:02d}:45" for h in range(9, 21) if h not in [12, 17, 20]]
+        time_options = [f"{h:02d}:00 ~ {h:02d}:45" for h in range(10, 17) if h not in [12]]
         with st.form("reserve_form"):
             c1, c2 = st.columns(2)
             r_date_val = c1.date_input("방문 날짜", date.today())
@@ -240,7 +240,7 @@ elif choice == "📅 세대관람 예약":
             else: st.info("예약 데이터가 없습니다.")
         except: st.error("데이터 로드 실패")
 
-elif choice == "⚙️ 매물 통합 관리":
+elif choice == "⚙️ 매물 관리자":
     st.title("⚙️ 매물 통합 관리")
     col1, col2, col3 = st.columns(3)
     edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
