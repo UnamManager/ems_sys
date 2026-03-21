@@ -2,42 +2,34 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
-from streamlit_javascript import st_javascript
+import uuid
 
-# 1. 페이지 설정
+# 1. 페이지 설정 및 디자인
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
+st.markdown("""
+    <style>
+    [data-testid="stElementToolbar"] { display: none !important; }
+    .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # =========================
-# 🆔 기기 고유 식별자(Device ID) 획득
+# 🔑 세션 및 보안 설정
 # =========================
-device_id = st_javascript("""
-    (function() {
-        var did = localStorage.getItem('ems_device_id');
-        if (!did) {
-            did = 'dev-' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('ems_device_id', did);
-        }
-        return did;
-    })()
-""")
-
-if not device_id:
-    st.info("📱 기기 보안 식별 중...")
-    st.stop()
-
-# =========================
-# 🔑 세션 초기화
-# =========================
+if "browser_id" not in st.session_state:
+    st.session_state.browser_id = str(uuid.uuid4())[:8]
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "user_id" not in st.session_state: st.session_state.user_id = ""
+if "auth_res" not in st.session_state: st.session_state.auth_res = False
+if "auth_manage" not in st.session_state: st.session_state.auth_manage = False
 
 ADMIN_PASSWORD_RES = "3090"
 ADMIN_PASSWORD_MANAGE = "ua0952"
 
 # =========================
-# 📊 구글 시트 연결
+# 📊 구글 시트 연결 및 데이터 로드
 # =========================
 @st.cache_resource
 def get_gspread_client():
@@ -49,97 +41,120 @@ def get_gspread_client():
 client = get_gspread_client()
 sheet = client.open("EMS")
 
-# --- [2기기 슬롯 로직] ---
-def check_and_register_device(user_id, my_device):
-    try:
-        ws = sheet.worksheet("접속현황")
-        data = ws.get_all_values()
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 헤더 제외하고 데이터 찾기
-        for i, row in enumerate(data):
-            if i == 0: continue # 헤더 스킵
-            if row[0] == user_id:
-                # row의 길이를 안전하게 맞춤 (A:아이디, B:기기1, C:기기2, D:시간)
-                r = row + [""] * (4 - len(row))
-                dev1 = r[1].strip()
-                dev2 = r[2].strip()
-                
-                # 1. 이미 내 기기 중 하나라면 통과
-                if my_device == dev1 or my_device == dev2:
-                    ws.update(f'D{i+1}', [[now_str]])
-                    return True, ""
-                
-                # 2. 첫 번째 자리가 비어있으면 등록
-                if not dev1:
-                    ws.update(f'B{i+1}:D{i+1}', [[my_device, dev2, now_str]])
-                    return True, ""
-                
-                # 3. 두 번째 자리가 비어있으면 등록
-                if not dev2:
-                    ws.update(f'C{i+1}:D{i+1}', [[my_device, now_str]])
-                    return True, ""
-                
-                # 4. 둘 다 꽉 찼는데 내 기기가 아니면 차단
-                return False, "이미 등록된 기기 2대(PC/모바일)가 꽉 찼습니다."
-        
-        # 5. 아예 목록에 없는 신규 아이디라면 새로 추가
-        ws.append_row([user_id, my_device, "", now_str])
-        return True, ""
-    except Exception as e:
-        return True, "" # 에러 발생 시 일단 통과 (로그인 차단 방지)
-
-# --- 데이터 로드 (기존과 동일) ---
 @st.cache_data(ttl=300)
 def load_full_data():
-    # ... (생략: 기존 데이터 로드 코드)
-    return df_total, user_dict
+    try:
+        sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
+        df_list = []
+        for s in sheets:
+            try:
+                ws = sheet.worksheet(s)
+                data = ws.get_all_values()
+                if len(data) > 1:
+                    df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
+                    df["단지"] = s.split("_")[0]
+                    df["거래유형"] = s.split("_")[1]
+                    for col in ["매매가", "월세", "동", "호수"]:
+                        df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
+                    df_list.append(df)
+            except: continue
+        
+        user_ws = sheet.worksheet("사용자목록")
+        u_data = user_ws.get_all_values()
+        user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
+        
+        full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+        if not full_df.empty:
+            full_df = full_df.sort_values(by=["단지", "동_num", "호수_num"])
+        return full_df, user_dict
+    except: return pd.DataFrame(), {}
 
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 로그인 화면 (2기기 제한 적용)
+# 🔒 기기 고정 체크 로직
+# =========================
+def check_and_register_device(user_id, my_id):
+    try:
+        ws = sheet.worksheet("접속현황")
+        data = ws.get_all_values()
+        now = datetime.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        
+        for i, row in enumerate(data):
+            if i == 0: continue
+            if row[0] == user_id:
+                r = row + [""] * (4 - len(row))
+                dev1, dev2, last_time_str = r[1].strip(), r[2].strip(), r[3].strip()
+                
+                # 타임아웃 30분 적용 (미활동 시 슬롯 해제용)
+                is_timeout = False
+                if last_time_str:
+                    last_time = datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
+                    if now - last_time > timedelta(minutes=30): is_timeout = True
+
+                if my_id == dev1 or my_id == dev2:
+                    ws.update(f'D{i+1}', [[now_str]]); return True, ""
+                if not dev1 or is_timeout:
+                    ws.update(f'B{i+1}:D{i+1}', [[my_id, dev2 if not is_timeout else "", now_str]])
+                    return True, ""
+                if not dev2:
+                    ws.update(f'C{i+1}:D{i+1}', [[my_id, now_str]]); return True, ""
+                
+                return False, "등록된 기기 2대를 초과했습니다. 로그아웃 후 다시 시도하세요."
+        
+        ws.append_row([user_id, my_id, "", now_str])
+        return True, ""
+    except: return True, ""
+
+# =========================
+# 👤 로그인 화면
 # =========================
 if not st.session_state.logged_in:
-    st.title("🔒 EMS 협력사 전용 로그인")
-    st.caption(f"인증된 기기 코드: {device_id}")
-    
+    st.title("🔒 EMS 협력사 로그인")
     with st.form("login"):
         u_id = st.text_input("아이디(상호명)").strip()
         u_pw = st.text_input("비밀번호", type="password").strip()
         if st.form_submit_button("인증 및 로그인"):
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                # [핵심] 기기 슬롯 체크
-                can_in, msg = check_and_register_device(u_id, device_id)
+                can_in, msg = check_and_register_device(u_id, st.session_state.browser_id)
                 if can_in:
                     st.session_state.logged_in = True
                     st.session_state.user_id = u_id
                     st.rerun()
-                else:
-                    st.error(f"🚨 {msg}")
-            else: st.error("❌ 로그인 정보를 확인해주세요.")
+                else: st.error(f"🚨 {msg}")
+            else: st.error("❌ 정보를 확인해주세요.")
     st.stop()
 
 # =========================
-# 🏠 메인 사이드바 및 기능
+# 🏠 사이드바 (메뉴 은닉 핵심)
 # =========================
-# (기존의 메뉴 은닉, 예약 관리, 매물 통합 관리 로직 100% 동일하게 유지)
+menu_options = ["📊 실시간 매물 현황", "🔍 등록 매물 조회"]
+if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
+if st.session_state.auth_manage: menu_options.append("⚙️ 매물 통합 관리")
 
 with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 인증됨")
-    # ... 메뉴 선택 라디오 버튼 ...
-    
-    if st.button("🚪 로그아웃 (이 기기 등록 해제)"):
-        # 협력사가 기기를 바꿀 때를 대비해 로그아웃 시 현재 기기만 삭제
-        ws = sheet.worksheet("접속현황")
-        rows = ws.get_all_values()
-        for i, r in enumerate(rows):
-            if r[0] == st.session_state.user_id:
-                if r[1] == device_id: ws.update(f'B{i+1}', [[""]])
-                elif r[2] == device_id: ws.update(f'C{i+1}', [[""]])
-                break
-        st.session_state.clear()
-        st.rerun()
+    choice = st.radio("메뉴 이동", menu_options)
+    st.divider()
+    with st.expander("🛠️ 관리자 인증"):
+        pw_in = st.text_input("코드 입력", type="password")
+        if pw_in == ADMIN_PASSWORD_RES and not st.session_state.auth_res:
+            st.session_state.auth_res = True; st.rerun()
+        if pw_in == ADMIN_PASSWORD_MANAGE and not st.session_state.auth_manage:
+            st.session_state.auth_manage = True; st.rerun()
+    if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
+    if st.button("🚪 로그아웃 (기기 해제)"):
+        try:
+            ws = sheet.worksheet("접속현황")
+            rows = ws.get_all_values()
+            for i, r in enumerate(rows):
+                if r[0] == st.session_state.user_id:
+                    if r[1] == st.session_state.browser_id: ws.update(f'B{i+1}', [[""]])
+                    elif r[2] == st.session_state.browser_id: ws.update(f'C{i+1}', [[""]])
+                    break
+        except: pass
+        st.session_state.clear(); st.rerun()
         
 # --- 공통 스타일 함수 ---
 def apply_style(df):
