@@ -2,12 +2,9 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime, date
+from datetime import datetime, date  # <--- date 추가해서 NameError 해결
 import json
 import uuid
-import smtplib
-import os
-from email.mime.text import MIMEText
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
@@ -19,7 +16,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =========================
-# 🔑 세션 및 보안 설정
+# 🔑 세션 초기화
 # =========================
 if "session_key" not in st.session_state:
     st.session_state.session_key = str(uuid.uuid4())
@@ -32,27 +29,7 @@ ADMIN_PASSWORD_RES = "3090"
 ADMIN_PASSWORD_MANAGE = "ua0952"
 
 # =========================
-# 📧 이메일 알림 함수
-# =========================
-def send_email_notification(content):
-    try:
-        sender = st.secrets.get("EMAIL_ADDRESS")
-        password = st.secrets.get("EMAIL_PASSWORD")
-        receiver = st.secrets.get("ADMIN_NOTIFY_EMAIL")
-        if sender and password and receiver:
-            msg = MIMEText(content)
-            msg["Subject"] = "📢 새로운 관람 예약 등록 알림"
-            msg["From"] = sender
-            msg["To"] = receiver
-            server = smtplib.SMTP("smtp.gmail.com", 587)
-            server.starttls()
-            server.login(sender, password)
-            server.sendmail(sender, receiver, msg.as_string())
-            server.quit()
-    except: pass
-
-# =========================
-# 📊 구글 시트 연결 및 데이터 로드 (TTL 600 적용)
+# 📊 구글 시트 연결
 # =========================
 @st.cache_resource
 def get_gspread_client():
@@ -62,10 +39,24 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 client = get_gspread_client()
-# 형의 시트 ID 직접 입력 (가장 확실함)
-sheet = client.open_by_key("1DxftUK1mIzY1WhR5SeEo-c3RXeeHej5IFJcEQec6Y1U")
+sheet = client.open("EMS")
 
-@st.cache_data(ttl=600) # 부하 테스트 대비 10분 캐싱
+# --- [실시간 세션 감시 함수] ---
+def sync_session(user_id, my_key):
+    try:
+        ws = sheet.worksheet("접속현황")
+        data = ws.get_all_values()
+        for i, row in enumerate(data):
+            if row[0] == user_id:
+                if row[1] != "" and row[1] != my_key:
+                    return False # 다른 키가 박혀있으면 튕김
+                ws.update(f'C{i+1}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
+                return True
+        return True
+    except: return True
+
+# --- 데이터 로드 ---
+@st.cache_data(ttl=300)
 def load_full_data():
     try:
         sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
@@ -76,50 +67,70 @@ def load_full_data():
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                     df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
-                    df["매매가_num"] = pd.to_numeric(df["매매가"].str.replace(',', ''), errors='coerce').fillna(0)
-                    df["월세_num"] = pd.to_numeric(df["월세"].str.replace(',', ''), errors='coerce').fillna(0)
+                    # 숫자 계산용 컬럼 추가
+                    for col in ["매매가", "월세"]:
+                        df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
                     df_list.append(df)
             except: continue
-        u_ws = sheet.worksheet("사용자목록"); u_data = u_ws.get_all_values()
-        u_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
-        return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame(), u_dict
+        user_ws = sheet.worksheet("사용자목록")
+        u_data = user_ws.get_all_values()
+        user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
+        return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame(), user_dict
     except: return pd.DataFrame(), {}
 
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 로그인 (강제 접속 기능 포함)
+# 🔒 로그인 및 중복 체크 (강제 접속 포함)
 # =========================
 if not st.session_state.logged_in:
     st.title("🔒 EMS 협력사 로그인")
     with st.form("login"):
         u_id = st.text_input("아이디(상호명)").strip()
         u_pw = st.text_input("비밀번호", type="password").strip()
-        if st.form_submit_button("로그인"):
+        login_btn = st.form_submit_button("로그인")
+        
+        if login_btn:
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                ws_status = sheet.worksheet("접속현황"); all_status = ws_status.get_all_values()
-                target_row = -1; db_key = ""
-                for i, r in enumerate(all_status):
-                    if r[0] == u_id: target_row = i + 1; db_key = r[1].strip(); break
+                ws_status = sheet.worksheet("접속현황")
+                all_status = ws_status.get_all_values()
                 
-                if db_key != "" and db_key != st.session_key:
-                    st.session_state.pending_user = u_id; st.error("🚨 다른 기기에서 사용 중입니다.")
+                target_row = -1
+                current_db_key = ""
+                for i, r in enumerate(all_status):
+                    if r[0] == u_id:
+                        target_row = i + 1
+                        current_db_key = r[1].strip()
+                        break
+                
+                if current_db_key != "" and current_db_key != st.session_state.session_key:
+                    st.error("🚨 다른 기기에서 사용 중입니다.")
+                    st.session_state.pending_user = u_id
                 else:
-                    if target_row != -1: ws_status.update(f'B{target_row}', [[st.session_state.session_key]])
-                    else: ws_status.append_row([u_id, st.session_state.session_key, ""])
+                    if target_row != -1:
+                        ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
+                    else:
+                        ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
                     st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
             else: st.error("❌ 정보를 확인해주세요.")
+            
     if "pending_user" in st.session_state:
-        if st.button(f"👉 '{st.session_state.pending_user}' 내 세션으로 강제 접속하기"):
-            ws_status = sheet.worksheet("접속현황"); data = ws_status.get_all_values()
-            for i, r in enumerate(data):
-                if r[0] == st.session_state.pending_user: ws_status.update(f'B{i+1}', [[st.session_state.session_key]]); break
+        if st.button(f"👉 '{st.session_state.pending_user}' 내 세션으로 강제 접속하기 (다른 기기 종료)"):
+            ws_status = sheet.worksheet("접속현황")
+            all_status = ws_status.get_all_values()
+            for i, r in enumerate(all_status):
+                if r[0] == st.session_state.pending_user:
+                    ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
+                    break
             st.session_state.logged_in = True; st.session_state.user_id = st.session_state.pending_user
             del st.session_state.pending_user; st.rerun()
     st.stop()
 
+if not sync_session(st.session_state.user_id, st.session_state.session_key):
+    st.error("🚨 다른 기기에서 접속이 감지되어 종료되었습니다."); st.session_state.clear(); st.stop()
+
 # =========================
-# 🏠 사이드바 및 메뉴 (형의 기존 로직 그대로)
+# 🏠 메인 사이드바
 # =========================
 menu_options = ["📊 실시간 매물 현황", "🔍 등록 매물 조회"]
 if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
@@ -131,17 +142,19 @@ with st.sidebar:
     st.divider()
     with st.expander("🛠️ 관리자 인증"):
         pw_in = st.text_input("코드 입력", type="password")
-        if pw_in == ADMIN_PASSWORD_RES: st.session_state.auth_res = True; st.rerun()
-        if pw_in == ADMIN_PASSWORD_MANAGE: st.session_state.auth_manage = True; st.rerun()
+        if pw_in == ADMIN_PASSWORD_RES and not st.session_state.auth_res:
+            st.session_state.auth_res = True; st.rerun()
+        if pw_in == ADMIN_PASSWORD_MANAGE and not st.session_state.auth_manage:
+            st.session_state.auth_manage = True; st.rerun()
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
     if st.button("🚪 로그아웃"):
-        ws = sheet.worksheet("접속현황"); data = ws.get_all_values()
-        for i, r in enumerate(data):
-            if r[0] == st.session_state.user_id: ws.update(f'B{i+1}', [[""]]); break
+        ws_status = sheet.worksheet("접속현황")
+        all_status = ws_status.get_all_values()
+        for i, r in enumerate(all_status):
+            if r[0] == st.session_state.user_id:
+                ws_status.update(f'B{i+1}', [[""]]); break
         st.session_state.clear(); st.rerun()
 
-
-# =========================
 def apply_style(df):
     return df.style.applymap(
         lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "",
@@ -180,7 +193,7 @@ elif choice == "🔍 등록 매물 조회":
     if search_ho: df_v = df_v[df_v["호수"] == search_ho]
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
-elif choice == "📅 예약 관리자":
+elif choice == "📅 세대관람 예약":
     st.title("📅 세대관람 예약 관리")
     tab1, tab2 = st.tabs(["📅 예약 등록", "📊 예약 현황"])
     with tab1:
@@ -190,17 +203,16 @@ elif choice == "📅 예약 관리자":
         r_items = []
         for i in range(r_count):
             with st.container(border=True):
-                c1, c2 = st.columns(2)
+                col1, col2 = st.columns(2)
                 u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                d_sel = c1.selectbox("동", u_dongs, key=f"d_r_{i}")
+                d_sel = col1.selectbox("동", u_dongs, key=f"d_r_{i}")
                 u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                h_sel = c2.selectbox("호수", u_hos, key=f"h_r_{i}")
+                h_sel = col2.selectbox("호수", u_hos, key=f"h_r_{i}")
                 match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
                 if not match.empty:
                     m_row = match.iloc[0]
                     st.markdown(f"✅ 타입: **{m_row['타입']}** | 상태: **{m_row['거래여부']}**")
                     r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입']})
-        
         time_options = [f"{h:02d}:00 ~ {h:02d}:45" for h in range(9, 21) if h not in [12, 17, 20]]
         with st.form("reserve_form"):
             c1, c2 = st.columns(2)
@@ -211,15 +223,13 @@ elif choice == "📅 예약 관리자":
             t_val = st.selectbox("방문 시간", time_options)
             memo_input = st.text_input("상세 메모")
             if st.form_submit_button("📅 예약 최종 확정"):
-                if r_name and r_items:
-                    ws_name = f"{res_dj}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
-                    ws = sheet.worksheet(ws_name)
+                if not r_name: st.error("성함을 입력해주세요.")
+                else:
+                    target_ws_name = f"{res_dj}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
+                    ws = sheet.worksheet(target_ws_name)
                     rows = [[r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, r_manager, memo_input] for s in r_items]
-                    ws.append_rows(rows)
-                    # 메일 알림 전송
-                    m_body = f"신규 예약 등록\n사용자: {st.session_state.user_id}\n날짜: {r_date_val}\n단지: {res_dj}\n예약자: {r_name}\n세대: {r_items[0]['동']}동 외 {r_count}건"
-                    send_email_notification(m_body)
-                    st.success("✅ 예약 완료 및 알림 전송!"); st.cache_data.clear()
+                    ws.append_rows(rows); st.success("✅ 예약 완료!"); st.cache_data.clear()
+
     with tab2:
         v_dj = st.selectbox("조회 단지 선택", ["1단지", "2단지", "3단지", "야간"])
         try:
@@ -230,7 +240,7 @@ elif choice == "📅 예약 관리자":
             else: st.info("예약 데이터가 없습니다.")
         except: st.error("데이터 로드 실패")
 
-elif choice == "⚙️ 매물 관리자":
+elif choice == "⚙️ 매물 통합 관리":
     st.title("⚙️ 매물 통합 관리")
     col1, col2, col3 = st.columns(3)
     edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
