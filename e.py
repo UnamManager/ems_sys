@@ -5,13 +5,13 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import json
 from streamlit_javascript import st_javascript
+import time
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
 
-# =========================
-# 🆔 기기 고유 식별자(Device ID) 획득
-# =========================
+
+# 1. 기기 고유 ID 획득 (안정화 로직)
 device_id = st_javascript("""
     (function() {
         var did = localStorage.getItem('ems_device_id');
@@ -23,9 +23,14 @@ device_id = st_javascript("""
     })()
 """)
 
-if not device_id:
-    st.info("📱 기기 보안 식별 중...")
-    st.stop()
+# 2. 값이 없으면 잠깐 대기 후 재시도 유도
+if not device_id or device_id == 0:
+    st.info("📱 보안 엔진을 가동하고 있습니다... (약 3초 소요)")
+    time.sleep(3) # 물리적인 대기 시간 부여
+    st.rerun()    # 다시 실행해서 값을 받아오도록 유도
+
+# 여기에 도달하면 device_id가 확실히 있는 상태!
+st.sidebar.caption(f"ID: {device_id}")
 # =========================
 # 🔑 세션 초기화
 # =========================
