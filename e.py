@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import uuid
 
@@ -16,7 +16,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =========================
-# 🔑 세션 초기화 (session_key가 핵심)
+# 🔑 세션 초기화
 # =========================
 if "session_key" not in st.session_state:
     st.session_state.session_key = str(uuid.uuid4())
@@ -41,30 +41,32 @@ def get_gspread_client():
 client = get_gspread_client()
 sheet = client.open("EMS")
 
-# --- [강력 로직] 동시 접속 감시 및 세션 업데이트 ---
-def sync_session(user_id, my_key):
-    ws = sheet.worksheet("접속현황")
-    data = ws.get_all_values()
-    
-    # 1. 현재 시트에 기록된 이 아이디의 최신 세션 키 확인
-    db_key = ""
-    row_idx = -1
-    for i, row in enumerate(data):
-        if row[0] == user_id:
-            db_key = row[1]
-            row_idx = i + 1
-            break
-    
-    # 2. 내 키와 DB 키가 다르면 (누가 새로 로그인함) -> 차단
-    if db_key and db_key != my_key:
+# --- [입구 컷 로직] 중복 로그인 원천 봉쇄 ---
+def check_can_login(user_id):
+    try:
+        ws = sheet.worksheet("접속현황")
+        data = ws.get_all_values()
+        for row in data:
+            if row[0] == user_id:
+                # 마지막 활동 시간이 5분 이내면 사용 중으로 간주 (타임아웃 설정 가능)
+                last_time = datetime.strptime(row[2], "%Y-%m-%d %H:%M:%S")
+                if datetime.now() - last_time < timedelta(minutes=5):
+                    return False, "현재 다른 기기에서 사용 중인 아이디입니다."
+        return True, ""
+    except: return True, ""
+
+# 실시간 생존 신고 (접속 중임을 시트에 계속 알림)
+def report_alive(user_id, my_key):
+    try:
+        ws = sheet.worksheet("접속현황")
+        data = ws.get_all_values()
+        for i, row in enumerate(data):
+            if row[0] == user_id:
+                if row[1] != my_key: return False # 내 키가 아니면 쫓겨남
+                ws.update(f'C{i+1}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
+                return True
         return False
-    
-    # 3. 로그인 중이라면 시간 업데이트 (생존 신고)
-    if row_idx != -1:
-        ws.update(f'C{row_idx}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
-    else:
-        ws.append_row([user_id, my_key, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-    return True
+    except: return True
 
 # --- 데이터 로드 ---
 @st.cache_data(ttl=300)
@@ -73,8 +75,7 @@ def load_full_data():
     df_list = []
     for s in sheets:
         try:
-            ws = sheet.worksheet(s)
-            data = ws.get_all_values()
+            ws = sheet.worksheet(s); data = ws.get_all_values()
             if len(data) > 1:
                 df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                 df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
@@ -89,7 +90,7 @@ def load_full_data():
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 로그인 및 실시간 세션 체크
+# 🔒 로그인 화면 (입구 컷 적용)
 # =========================
 if not st.session_state.logged_in:
     st.title("🔒 EMS 협력사 로그인")
@@ -98,39 +99,35 @@ if not st.session_state.logged_in:
         u_pw = st.text_input("비밀번호", type="password").strip()
         if st.form_submit_button("로그인"):
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                # 로그인 성공 시 DB에 내 세션 키를 강제로 덮어씌움 (기존 접속자 밀어내기)
-                ws_status = sheet.worksheet("접속현황")
-                all_status = ws_status.get_all_values()
-                exists = False
-                for i, r in enumerate(all_status):
-                    if r[0] == u_id:
-                        ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
-                        exists = True; break
-                if not exists: ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
-                
-                st.session_state.logged_in = True
-                st.session_state.user_id = u_id
-                st.rerun()
+                # [핵심] 로그인 전 중복 체크
+                can_login, msg = check_can_login(u_id)
+                if not can_login:
+                    st.error(f"🚨 {msg}")
+                else:
+                    # 접속 정보 기록
+                    ws_status = sheet.worksheet("접속현황")
+                    all_status = ws_status.get_all_values()
+                    exists = False
+                    for i, r in enumerate(all_status):
+                        if r[0] == u_id:
+                            ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
+                            exists = True; break
+                    if not exists: ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+                    
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = u_id
+                    st.rerun()
             else: st.error("❌ 정보를 확인해주세요.")
     st.stop()
 
-# [무적의 중복 체크] 모든 페이지 동작 전에 실행
-if not sync_session(st.session_state.user_id, st.session_state.session_key):
-    st.error("🚨 다른 기기에서 로그인이 감지되어 이 세션은 종료되었습니다.")
-    st.info("중복 로그인을 방지하기 위해 한 아이디당 하나의 브라우저만 허용됩니다.")
-    if st.button("내 세션으로 다시 접속하기 (다른 기기 튕겨냄)"):
-        # 내 키로 DB를 갱신해버림
-        ws_status = sheet.worksheet("접속현황")
-        all_status = ws_status.get_all_values()
-        for i, r in enumerate(all_status):
-            if r[0] == st.session_state.user_id:
-                ws_status.update(f'B{i+1}', [[st.session_state.session_key]])
-                break
-        st.rerun()
+# [중복 접속 실시간 체크]
+if not report_alive(st.session_state.user_id, st.session_state.session_key):
+    st.error("🚨 세션이 만료되었거나 다른 기기에서 접속이 감지되었습니다.")
+    st.session_state.clear()
     st.stop()
 
 # =========================
-# 🏠 메인 사이드바 (메뉴 은닉 적용)
+# 🏠 사이드바 및 메뉴 (은닉 유지)
 # =========================
 menu_options = ["📊 실시간 매물 현황", "🔍 등록 매물 조회"]
 if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
@@ -147,7 +144,17 @@ with st.sidebar:
         if pw_in == ADMIN_PASSWORD_MANAGE and not st.session_state.auth_manage:
             st.session_state.auth_manage = True; st.rerun()
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
-    if st.button("🚪 로그아웃"): st.session_state.clear(); st.rerun()
+    if st.button("🚪 로그아웃"): 
+        # 로그아웃 시 접속현황 삭제 (매너 로그아웃)
+        try:
+            ws = sheet.worksheet("접속현황")
+            rows = ws.get_all_values()
+            for i, r in enumerate(rows):
+                if r[0] == st.session_state.user_id:
+                    ws.update(f'B{i+1}:C{i+1}', [["", "2000-01-01 00:00:00"]]) # 시간을 과거로 돌려 로그인 가능하게 함
+                    break
+        except: pass
+        st.session_state.clear(); st.rerun()
 
 # --- 공통 스타일 함수 ---
 def apply_style(df):
