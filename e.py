@@ -2,38 +2,20 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
-from streamlit_javascript import st_javascript
-import time
+import uuid
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
 
-
-# 1. 기기 고유 ID 획득 (안정화 로직)
-device_id = st_javascript("""
-    (function() {
-        var did = localStorage.getItem('ems_device_id');
-        if (!did) {
-            did = 'dev-' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('ems_device_id', did);
-        }
-        return did;
-    })()
-""")
-
-# 2. 값이 없으면 잠깐 대기 후 재시도 유도
-if not device_id or device_id == 0:
-    st.info("📱 보안 엔진을 가동하고 있습니다... (약 3초 소요)")
-    time.sleep(3) # 물리적인 대기 시간 부여
-    st.rerun()    # 다시 실행해서 값을 받아오도록 유도
-
-# 여기에 도달하면 device_id가 확실히 있는 상태!
-st.sidebar.caption(f"ID: {device_id}")
 # =========================
-# 🔑 세션 초기화
+# 🔑 세션 및 고유 키 설정 (JS 대신 세션 사용)
 # =========================
+if "browser_id" not in st.session_state:
+    # 브라우저가 열릴 때마다 고유 키 생성 (창을 완전히 닫기 전까지 유지)
+    st.session_state.browser_id = str(uuid.uuid4())[:8]
+
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "user_id" not in st.session_state: st.session_state.user_id = ""
 
@@ -53,94 +35,94 @@ def get_gspread_client():
 client = get_gspread_client()
 sheet = client.open("EMS")
 
-# --- [2기기 슬롯 로직] ---
-def check_and_register_device(user_id, my_device):
+# --- [2기기 슬롯 로직 - 시간 기반 자동 해제 포함] ---
+def check_and_register_device(user_id, my_id):
     try:
         ws = sheet.worksheet("접속현황")
         data = ws.get_all_values()
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
         
-        # 헤더 제외하고 데이터 찾기
         for i, row in enumerate(data):
-            if i == 0: continue # 헤더 스킵
+            if i == 0: continue
             if row[0] == user_id:
-                # row의 길이를 안전하게 맞춤 (A:아이디, B:기기1, C:기기2, D:시간)
+                # 데이터 안전하게 가져오기
                 r = row + [""] * (4 - len(row))
-                dev1 = r[1].strip()
-                dev2 = r[2].strip()
+                dev1, dev2, last_time_str = r[1], r[2], r[3]
                 
-                # 1. 이미 내 기기 중 하나라면 통과
-                if my_device == dev1 or my_device == dev2:
+                # [중요] 마지막 활동이 30분 이상 지났으면 슬롯 초기화 (모바일 창 닫기 대응)
+                is_timeout = False
+                if last_time_str:
+                    last_time = datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
+                    if now - last_time > timedelta(minutes=30):
+                        is_timeout = True
+
+                # 1. 이미 내 기기면 통과
+                if my_id == dev1 or my_id == dev2:
                     ws.update(f'D{i+1}', [[now_str]])
                     return True, ""
                 
-                # 2. 첫 번째 자리가 비어있으면 등록
-                if not dev1:
-                    ws.update(f'B{i+1}:D{i+1}', [[my_device, dev2, now_str]])
+                # 2. 타임아웃 되었거나 빈 자리가 있으면 등록
+                if not dev1 or is_timeout:
+                    ws.update(f'B{i+1}:D{i+1}', [[my_id, dev2 if not is_timeout else "", now_str]])
                     return True, ""
-                
-                # 3. 두 번째 자리가 비어있으면 등록
                 if not dev2:
-                    ws.update(f'C{i+1}:D{i+1}', [[my_device, now_str]])
+                    ws.update(f'C{i+1}:D{i+1}', [[my_id, now_str]])
                     return True, ""
                 
-                # 4. 둘 다 꽉 찼는데 내 기기가 아니면 차단
-                return False, "이미 등록된 기기 2대(PC/모바일)가 꽉 찼습니다."
+                return False, "등록된 기기 2대를 초과했습니다. (기존 기기 로그아웃 필요)"
         
-        # 5. 아예 목록에 없는 신규 아이디라면 새로 추가
-        ws.append_row([user_id, my_device, "", now_str])
+        # 신규 등록
+        ws.append_row([user_id, my_id, "", now_str])
         return True, ""
-    except Exception as e:
-        return True, "" # 에러 발생 시 일단 통과 (로그인 차단 방지)
+    except: return True, ""
 
-# --- 데이터 로드 (기존과 동일) ---
+# --- 데이터 로드 ---
 @st.cache_data(ttl=300)
 def load_full_data():
-    # ... (생략: 기존 데이터 로드 코드)
+    # (기존 데이터 로드 로직 동일)
+    ...
     return df_total, user_dict
 
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 로그인 화면 (2기기 제한 적용)
+# 🔒 로그인 화면 (복잡한 엔진 삭제!)
 # =========================
 if not st.session_state.logged_in:
-    st.title("🔒 EMS 협력사 전용 로그인")
-    st.caption(f"인증된 기기 코드: {device_id}")
-    
+    st.title("🔒 EMS 협력사 로그인")
     with st.form("login"):
         u_id = st.text_input("아이디(상호명)").strip()
         u_pw = st.text_input("비밀번호", type="password").strip()
         if st.form_submit_button("인증 및 로그인"):
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                # [핵심] 기기 슬롯 체크
-                can_in, msg = check_and_register_device(u_id, device_id)
+                # 여기서 바로 슬롯 체크!
+                can_in, msg = check_and_register_device(u_id, st.session_state.browser_id)
                 if can_in:
                     st.session_state.logged_in = True
                     st.session_state.user_id = u_id
                     st.rerun()
-                else:
-                    st.error(f"🚨 {msg}")
-            else: st.error("❌ 로그인 정보를 확인해주세요.")
+                else: st.error(f"🚨 {msg}")
+            else: st.error("❌ 정보를 확인해주세요.")
     st.stop()
 
 # =========================
-# 🏠 메인 사이드바 및 기능
+# 🏠 사이드바 메뉴 및 은닉 로직
 # =========================
-# (기존의 메뉴 은닉, 예약 관리, 매물 통합 관리 로직 100% 동일하게 유지)
+# (이전과 동일하게 메뉴 구성)
 
 with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 인증됨")
-    # ... 메뉴 선택 라디오 버튼 ...
+    # ... 메뉴 선택 ...
     
-    if st.button("🚪 로그아웃 (이 기기 등록 해제)"):
-        # 협력사가 기기를 바꿀 때를 대비해 로그아웃 시 현재 기기만 삭제
+    if st.button("🚪 로그아웃 (기기 해제)"):
+        # 로그아웃 시 시트에서 내 browser_id 삭제
         ws = sheet.worksheet("접속현황")
         rows = ws.get_all_values()
         for i, r in enumerate(rows):
             if r[0] == st.session_state.user_id:
-                if r[1] == device_id: ws.update(f'B{i+1}', [[""]])
-                elif r[2] == device_id: ws.update(f'C{i+1}', [[""]])
+                if r[1] == st.session_state.browser_id: ws.update(f'B{i+1}', [[""]])
+                elif r[2] == st.session_state.browser_id: ws.update(f'C{i+1}', [[""]])
                 break
         st.session_state.clear()
         st.rerun()
