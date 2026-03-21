@@ -5,6 +5,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date  # <--- date 추가해서 NameError 해결
 import json
 import uuid
+from st_aggrid import AgGrid, GridOptionsBuilder
+import smtplib
+from email.mime.text import MIMEText
+import os
+
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
@@ -27,6 +32,27 @@ if "auth_manage" not in st.session_state: st.session_state.auth_manage = False
 
 ADMIN_PASSWORD_RES = "3090"
 ADMIN_PASSWORD_MANAGE = "ua0952"
+# =========================
+# 📩 이메일 알림
+# =========================
+def send_email_notification(content):
+    try:
+        sender = os.environ["EMAIL_ADDRESS"]
+        password = os.environ["EMAIL_PASSWORD"]
+        receiver = os.environ["ADMIN_NOTIFY_EMAIL"]
+
+        msg = MIMEText(content)
+        msg["Subject"] = "📢 새로운 관람 예약 등록"
+        msg["From"] = sender
+        msg["To"] = receiver
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender, password)
+        server.sendmail(sender, receiver, msg.as_string())
+        server.quit()
+    except:
+        pass
 
 # =========================
 # 📊 구글 시트 연결
