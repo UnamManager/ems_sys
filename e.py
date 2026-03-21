@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
+from datetime import datetime, date  # <--- date 추가해서 NameError 해결
 import json
 import uuid
 
@@ -67,6 +67,9 @@ def load_full_data():
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                     df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
+                    # 숫자 계산용 컬럼 추가
+                    for col in ["매매가", "월세"]:
+                        df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
                     df_list.append(df)
             except: continue
         user_ws = sheet.worksheet("사용자목록")
@@ -100,43 +103,31 @@ if not st.session_state.logged_in:
                         current_db_key = r[1].strip()
                         break
                 
-                # 중복 접속 확인
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
                     st.error("🚨 다른 기기에서 사용 중입니다.")
-                    # [추가] 강제 접속 세션 갱신 로직 (폼 밖에서 처리하기 위해 세션에 임시 저장)
                     st.session_state.pending_user = u_id
                 else:
-                    # 정상 로그인 처리
                     if target_row != -1:
                         ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
                     else:
                         ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
-                    
-                    st.session_state.logged_in = True
-                    st.session_state.user_id = u_id
-                    st.rerun()
+                    st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
             else: st.error("❌ 정보를 확인해주세요.")
             
-    # 강제 접속 버튼 (폼 외부에 배치)
     if "pending_user" in st.session_state:
-        if st.button(f"👉 '{st.session_state.pending_user}' 내 세션으로 다시 접속하기 (다른 기기 종료)"):
+        if st.button(f"👉 '{st.session_state.pending_user}' 내 세션으로 강제 접속하기 (다른 기기 종료)"):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
                 if r[0] == st.session_state.pending_user:
                     ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
                     break
-            st.session_state.logged_in = True
-            st.session_state.user_id = st.session_state.pending_user
-            del st.session_state.pending_user
-            st.rerun()
+            st.session_state.logged_in = True; st.session_state.user_id = st.session_state.pending_user
+            del st.session_state.pending_user; st.rerun()
     st.stop()
 
-# [실시간 세션 체크]
 if not sync_session(st.session_state.user_id, st.session_state.session_key):
-    st.error("🚨 다른 기기에서 접속이 감지되어 종료되었습니다.")
-    st.session_state.clear()
-    st.stop()
+    st.error("🚨 다른 기기에서 접속이 감지되어 종료되었습니다."); st.session_state.clear(); st.stop()
 
 # =========================
 # 🏠 메인 사이드바
@@ -157,17 +148,13 @@ with st.sidebar:
             st.session_state.auth_manage = True; st.rerun()
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
     if st.button("🚪 로그아웃"):
-        # 로그아웃 시 시트의 세션 키를 삭제하여 다른 사람이 들어올 수 있게 함
         ws_status = sheet.worksheet("접속현황")
         all_status = ws_status.get_all_values()
         for i, r in enumerate(all_status):
             if r[0] == st.session_state.user_id:
-                ws_status.update(f'B{i+1}', [[""]]) # 키 삭제
-                break
-        st.session_state.clear()
-        st.rerun()
-        
-# --- 공통 스타일 함수 ---
+                ws_status.update(f'B{i+1}', [[""]]); break
+        st.session_state.clear(); st.rerun()
+
 def apply_style(df):
     return df.style.applymap(
         lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "",
@@ -194,11 +181,9 @@ elif choice == "🔍 등록 매물 조회":
     s_bunyang = f2.multiselect("분양구분", df_total["분양구분"].unique())
     s_gubun = f3.multiselect("매물구분", df_total["매물구분"].unique())
     s_type = f4.multiselect("타입", sorted(df_total["타입"].unique()))
-    
     c1, c2, _ = st.columns([1,1,2])
     search_dong = c1.text_input("🏢 동 검색")
     search_ho = c2.text_input("🔑 호수 검색")
-    
     df_v = df_total.copy()
     if s_danji: df_v = df_v[df_v["단지"].isin(s_danji)]
     if s_bunyang: df_v = df_v[df_v["분양구분"].isin(s_bunyang)]
@@ -212,7 +197,6 @@ elif choice == "📅 세대관람 예약":
     st.title("📅 세대관람 예약 관리")
     tab1, tab2 = st.tabs(["📅 예약 등록", "📊 예약 현황"])
     with tab1:
-        st.subheader("📅 세대관람 예약 등록")
         res_dj = st.selectbox("예약 단지 선택", ["1단지", "2단지", "3단지"])
         f_unit = df_total[df_total["단지"] == res_dj]
         r_count = st.selectbox("관람 세대수 선택", [1, 2, 3])
@@ -229,11 +213,10 @@ elif choice == "📅 세대관람 예약":
                     m_row = match.iloc[0]
                     st.markdown(f"✅ 타입: **{m_row['타입']}** | 상태: **{m_row['거래여부']}**")
                     r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입']})
-
         time_options = [f"{h:02d}:00 ~ {h:02d}:45" for h in range(9, 21) if h not in [12, 17, 20]]
         with st.form("reserve_form"):
             c1, c2 = st.columns(2)
-            r_date = c1.date_input("방문 날짜", date.today())
+            r_date_val = c1.date_input("방문 날짜", date.today())
             r_name = c2.text_input("예약자 성함")
             r_agency = st.text_input("중개업소 명칭")
             r_manager = st.text_input("동행 매니저")
@@ -244,9 +227,8 @@ elif choice == "📅 세대관람 예약":
                 else:
                     target_ws_name = f"{res_dj}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
                     ws = sheet.worksheet(target_ws_name)
-                    rows = [[r_date.strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, r_manager, memo_input] for s in r_items]
-                    ws.append_rows(rows)
-                    st.success("✅ 예약 완료!"); st.cache_data.clear()
+                    rows = [[r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, r_manager, memo_input] for s in r_items]
+                    ws.append_rows(rows); st.success("✅ 예약 완료!"); st.cache_data.clear()
 
     with tab2:
         v_dj = st.selectbox("조회 단지 선택", ["1단지", "2단지", "3단지", "야간"])
@@ -264,45 +246,32 @@ elif choice == "⚙️ 매물 통합 관리":
     edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
     edit_dong = col2.text_input("동 입력 (숫자만)")
     edit_ho = col3.text_input("호수 입력 (숫자만)")
-
     if edit_dong and edit_ho:
         target_df = df_total[(df_total["단지"] == edit_dj) & (df_total["동"] == edit_dong) & (df_total["호수"] == edit_ho)]
         if not target_df.empty:
-            curr = target_df.iloc[0]
-            old_sheet_name = f"{edit_dj}_{curr['거래유형']}"
+            curr = target_df.iloc[0]; old_sheet_name = f"{edit_dj}_{curr['거래유형']}"
             with st.form("edit_form"):
                 st.markdown(f"### 📝 {edit_dong}동 {edit_ho}호 정보 수정")
                 c1, c2, c3 = st.columns(3)
                 options = ["매매", "전세", "월세"]
-                default_idx = options.index(curr["매물구분"]) if curr["매물구분"] in options else 0
-                new_gubun = c1.selectbox("매물구분", options, index=default_idx)
+                new_gubun = c1.selectbox("매물구분", options, index=options.index(curr["매물구분"]) if curr["매물구분"] in options else 0)
                 new_type = c2.text_input("타입", value=curr["타입"])
                 new_status = c3.selectbox("거래상태", ["관람가능", "거래완료"], index=0 if curr["거래여부"] == "관람가능" else 1)
-                
                 c4, c5, c6 = st.columns(3)
                 new_price_str = c4.text_input("매매가/보증금 (만원)", value=str(int(curr["매매가_num"])))
                 new_monthly_str = c5.text_input("월세 (만원)", value=str(int(curr["월세_num"])))
                 new_note = c6.text_input("비고", value=curr["비고"])
-
                 if st.form_submit_button("💾 정보 업데이트 및 저장"):
                     try:
-                        f_price = f"{int(new_price_str.replace(',','')):,}"
-                        f_monthly = f"{int(new_monthly_str.replace(',','')):,}"
+                        f_price = f"{int(new_price_str.replace(',','')):,}"; f_monthly = f"{int(new_monthly_str.replace(',','')):,}"
                         new_sheet_name = f"{edit_dj}_{'매매' if new_gubun == '매매' else '임대'}"
-                        
-                        ws = sheet.worksheet(old_sheet_name)
-                        rows = ws.get_all_values()
+                        ws = sheet.worksheet(old_sheet_name); rows = ws.get_all_values()
                         idx = next((i+1 for i, r in enumerate(rows) if len(r)>3 and r[2]==edit_dong and r[3]==edit_ho), -1)
-                        
                         if idx != -1:
                             new_data = [rows[idx-1][0], rows[idx-1][1], edit_dong, edit_ho, new_type, new_gubun, f_price, f_monthly, new_status, new_note]
                             if old_sheet_name != new_sheet_name:
-                                sheet.worksheet(new_sheet_name).append_row(new_data)
-                                ws.delete_rows(idx)
-                                st.success(f"🚀 {new_sheet_name} 이동 완료!")
-                            else:
-                                ws.update(f'E{idx}:J{idx}', [[new_type, new_gubun, f_price, f_monthly, new_status, new_note]])
-                                st.success("✅ 수정 완료!")
-                            st.cache_data.clear(); st.rerun()
+                                sheet.worksheet(new_sheet_name).append_row(new_data); ws.delete_rows(idx)
+                            else: ws.update(f'E{idx}:J{idx}', [[new_type, new_gubun, f_price, f_monthly, new_status, new_note]])
+                            st.success("✅ 완료!"); st.cache_data.clear(); st.rerun()
                     except: st.error("입력값을 확인하세요.")
         else: st.warning("🔍 매물을 찾을 수 없습니다.")
