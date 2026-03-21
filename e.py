@@ -181,7 +181,7 @@ elif choice == "🔍 등록 매물 조회":
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 elif choice == "📅 예약 관리자":
-st.title("📅 세대관람 예약 관리")
+    st.title("📅 세대관람 예약 관리")
     tab1, tab2 = st.tabs(["📅 예약 등록", "📊 예약 현황"])
     with tab1:
         res_dj = st.selectbox("예약 단지 선택", ["1단지", "2단지", "3단지"])
