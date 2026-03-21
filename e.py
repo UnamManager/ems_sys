@@ -41,17 +41,15 @@ def get_gspread_client():
 client = get_gspread_client()
 sheet = client.open("EMS")
 
-# --- [강력 로직] 실시간 세션 감시 ---
+# --- [실시간 세션 감시 함수] ---
 def sync_session(user_id, my_key):
     try:
         ws = sheet.worksheet("접속현황")
         data = ws.get_all_values()
         for i, row in enumerate(data):
             if row[0] == user_id:
-                # 시트에 등록된 키와 내 키가 다르면 누군가 침범한 것
                 if row[1] != "" and row[1] != my_key:
-                    return False
-                # 내 키가 맞으면 시간 업데이트 (생존 신고)
+                    return False # 다른 키가 박혀있으면 튕김
                 ws.update(f'C{i+1}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
                 return True
         return True
@@ -71,7 +69,6 @@ def load_full_data():
                     df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
                     df_list.append(df)
             except: continue
-        
         user_ws = sheet.worksheet("사용자목록")
         u_data = user_ws.get_all_values()
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
@@ -81,54 +78,68 @@ def load_full_data():
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 로그인 및 "철통" 중복 차단
+# 🔒 로그인 및 중복 체크 (강제 접속 포함)
 # =========================
 if not st.session_state.logged_in:
     st.title("🔒 EMS 협력사 로그인")
     with st.form("login"):
         u_id = st.text_input("아이디(상호명)").strip()
         u_pw = st.text_input("비밀번호", type="password").strip()
-        if st.form_submit_button("로그인"):
+        login_btn = st.form_submit_button("로그인")
+        
+        if login_btn:
             if u_id in user_dict and user_dict[u_id] == u_pw:
                 ws_status = sheet.worksheet("접속현황")
                 all_status = ws_status.get_all_values()
                 
-                # [핵심] 이미 로그인된 사람이 있는지 검사
-                already_in = False
+                target_row = -1
+                current_db_key = ""
                 for i, r in enumerate(all_status):
                     if r[0] == u_id:
-                        # 시트에 세션 키가 이미 존재한다면 (비어있지 않다면) 차단!
-                        if r[1].strip() != "":
-                            already_in = True
-                            break
+                        target_row = i + 1
+                        current_db_key = r[1].strip()
+                        break
                 
-                if already_in:
-                    st.error("🚨 현재 다른 기기에서 이 아이디를 사용 중입니다.")
-                    st.info("기존 사용자가 로그아웃을 해야 접속이 가능합니다.")
+                # 중복 접속 확인
+                if current_db_key != "" and current_db_key != st.session_state.session_key:
+                    st.error("🚨 다른 기기에서 사용 중입니다.")
+                    # [추가] 강제 접속 세션 갱신 로직 (폼 밖에서 처리하기 위해 세션에 임시 저장)
+                    st.session_state.pending_user = u_id
                 else:
-                    # 아무도 없으면 내 세션 키 등록하고 로그인 성공
-                    exists = False
-                    for i, r in enumerate(all_status):
-                        if r[0] == u_id:
-                            ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
-                            exists = True; break
-                    if not exists:
+                    # 정상 로그인 처리
+                    if target_row != -1:
+                        ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
+                    else:
                         ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
                     
                     st.session_state.logged_in = True
                     st.session_state.user_id = u_id
                     st.rerun()
             else: st.error("❌ 정보를 확인해주세요.")
+            
+    # 강제 접속 버튼 (폼 외부에 배치)
+    if "pending_user" in st.session_state:
+        if st.button(f"👉 '{st.session_state.pending_user}' 내 세션으로 다시 접속하기 (다른 기기 종료)"):
+            ws_status = sheet.worksheet("접속현황")
+            all_status = ws_status.get_all_values()
+            for i, r in enumerate(all_status):
+                if r[0] == st.session_state.pending_user:
+                    ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
+                    break
+            st.session_state.logged_in = True
+            st.session_state.user_id = st.session_state.pending_user
+            del st.session_state.pending_user
+            st.rerun()
     st.stop()
 
-# [실시간 감시] 모든 동작 전에 현재 내 세션이 유효한지 체크
+# [실시간 세션 체크]
 if not sync_session(st.session_state.user_id, st.session_state.session_key):
     st.error("🚨 다른 기기에서 접속이 감지되어 종료되었습니다.")
     st.session_state.clear()
     st.stop()
 
 # =========================
-# 🏠 메인 사이드바
+# 🏠 메인 메뉴
 # =========================
 menu_options = ["📊 실시간 매물 현황", "🔍 등록 매물 조회"]
 if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
@@ -138,23 +149,15 @@ with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 접속 중")
     choice = st.radio("메뉴 이동", menu_options)
     st.divider()
-    with st.expander("🛠️ 관리자 인증"):
-        pw_in = st.text_input("코드 입력", type="password")
-        if pw_in == ADMIN_PASSWORD_RES and not st.session_state.auth_res:
-            st.session_state.auth_res = True; st.rerun()
-        if pw_in == ADMIN_PASSWORD_MANAGE and not st.session_state.auth_manage:
-            st.session_state.auth_manage = True; st.rerun()
-    if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
+    # 관리자 인증 로직...
     if st.button("🚪 로그아웃"):
-        # 로그아웃 시 시트의 세션 키를 삭제하여 다른 사람이 들어올 수 있게 함
         ws_status = sheet.worksheet("접속현황")
         all_status = ws_status.get_all_values()
         for i, r in enumerate(all_status):
             if r[0] == st.session_state.user_id:
-                ws_status.update(f'B{i+1}', [[""]]) # 키 삭제
+                ws_status.update(f'B{i+1}', [[""]])
                 break
-        st.session_state.clear()
-        st.rerun()
+        st.session_state.clear(); st.rerun()
         
 # --- 공통 스타일 함수 ---
 def apply_style(df):
