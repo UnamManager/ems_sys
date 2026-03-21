@@ -2,9 +2,12 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime, date  # <--- date 추가해서 NameError 해결
+from datetime import datetime, date
 import json
 import uuid
+import smtplib
+import os
+from email.mime.text import MIMEText
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
@@ -29,6 +32,29 @@ ADMIN_PASSWORD_RES = "3090"
 ADMIN_PASSWORD_MANAGE = "ua0952"
 
 # =========================
+# 📩 이메일 알림 시스템 (추가된 부분)
+# =========================
+def send_email_notification(content):
+    try:
+        # Secrets에 설정된 값 사용
+        sender = st.secrets["EMAIL_ADDRESS"]
+        password = st.secrets["EMAIL_PASSWORD"]
+        receiver = st.secrets["ADMIN_NOTIFY_EMAIL"]
+
+        msg = MIMEText(content)
+        msg["Subject"] = "📢 새로운 관람 예약 등록"
+        msg["From"] = sender
+        msg["To"] = receiver
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender, password)
+        server.sendmail(sender, receiver, msg.as_string())
+        server.quit()
+    except:
+        pass # 메일 발송 실패해도 예약은 진행되도록
+
+# =========================
 # 📊 구글 시트 연결
 # =========================
 @st.cache_resource
@@ -49,14 +75,14 @@ def sync_session(user_id, my_key):
         for i, row in enumerate(data):
             if row[0] == user_id:
                 if row[1] != "" and row[1] != my_key:
-                    return False # 다른 키가 박혀있으면 튕김
+                    return False
                 ws.update(f'C{i+1}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
                 return True
         return True
     except: return True
 
 # --- 데이터 로드 ---
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600) # 형의 요청대로 600초로 상향
 def load_full_data():
     try:
         sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
@@ -67,7 +93,6 @@ def load_full_data():
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                     df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
-                    # 숫자 계산용 컬럼 추가
                     for col in ["매매가", "월세"]:
                         df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
                     df_list.append(df)
@@ -81,7 +106,7 @@ def load_full_data():
 df_total, user_dict = load_full_data()
 
 # =========================
-# 🔒 로그인 및 중복 체크 (강제 접속 포함)
+# 🔒 로그인 및 중복 체크
 # =========================
 if not st.session_state.logged_in:
     st.title("🔒 EMS 협력사 로그인")
@@ -94,14 +119,10 @@ if not st.session_state.logged_in:
             if u_id in user_dict and user_dict[u_id] == u_pw:
                 ws_status = sheet.worksheet("접속현황")
                 all_status = ws_status.get_all_values()
-                
-                target_row = -1
-                current_db_key = ""
+                target_row = -1; current_db_key = ""
                 for i, r in enumerate(all_status):
                     if r[0] == u_id:
-                        target_row = i + 1
-                        current_db_key = r[1].strip()
-                        break
+                        target_row = i + 1; current_db_key = r[1].strip(); break
                 
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
                     st.error("🚨 다른 기기에서 사용 중입니다.")
@@ -162,7 +183,7 @@ def apply_style(df):
     )
 
 # =========================
-# 📋 페이지별 로직
+# 📋 페이지별 로직 (예약 등록 시 메일 발송 연동)
 # =========================
 if choice == "📊 실시간 매물 현황":
     st.title("📊 실시간 매물 현황")
@@ -213,6 +234,7 @@ elif choice == "📅 예약 관리자":
                     m_row = match.iloc[0]
                     st.markdown(f"✅ 타입: **{m_row['타입']}** | 상태: **{m_row['거래여부']}**")
                     r_items.append({"동":d_sel, "호수":h_sel, "타입":m_row['타입']})
+        
         time_options = [f"{h:02d}:00 ~ {h:02d}:45" for h in range(10, 17) if h not in [12]]
         with st.form("reserve_form"):
             c1, c2 = st.columns(2)
@@ -228,7 +250,13 @@ elif choice == "📅 예약 관리자":
                     target_ws_name = f"{res_dj}_관람예약" if int(t_val[:2]) < 16 else "야간_관람예약"
                     ws = sheet.worksheet(target_ws_name)
                     rows = [[r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, r_manager, memo_input] for s in r_items]
-                    ws.append_rows(rows); st.success("✅ 예약 완료!"); st.cache_data.clear()
+                    ws.append_rows(rows)
+                    
+                    # 📩 알림 메일 발송 추가
+                    m_content = f"새로운 예약 등록!\n\n일시: {r_date_val} ({t_val})\n단지: {res_dj}\n예약자: {r_name}\n업소: {r_agency}\n세대: {r_items[0]['동']}동 {r_items[0]['호수']} 외 {r_count-1}건"
+                    send_email_notification(m_content)
+                    
+                    st.success("✅ 예약 완료 및 관리자 알림 발송!"); st.cache_data.clear()
 
     with tab2:
         v_dj = st.selectbox("조회 단지 선택", ["1단지", "2단지", "3단지", "야간"])
