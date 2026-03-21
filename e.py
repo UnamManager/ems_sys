@@ -39,7 +39,7 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 client = get_gspread_client()
-sheet = client.open("https://docs.google.com/spreadsheets/d/1DxftUK1mIzY1WhR5SeEo-c3RXeeHej5IFJcEQec6Y1U/edit?gid=0#gid=0")
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1DxftUK1mIzY1WhR5SeEo-c3RXeeHej5IFJcEQec6Y1U/edit")
 
 # --- [실시간 세션 감시 함수] ---
 def sync_session(user_id, my_key):
