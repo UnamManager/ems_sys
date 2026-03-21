@@ -125,7 +125,7 @@ if not st.session_state.logged_in:
                         target_row = i + 1; current_db_key = r[1].strip(); break
                 
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("⚠️ 현재 다른 기기에서 접속 중인 계정입니다. 보안 정책상 중복 접속은 제한됩니다.")
+                    st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다. 보안 정책상 중복 접속은 제한됩니다.")
                     st.session_state.pending_user = u_id
                 else:
                     if target_row != -1:
@@ -136,7 +136,7 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"🔐 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 시작하시겠습니까?"):
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 시작합니다."):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
