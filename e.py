@@ -130,7 +130,7 @@ if not st.session_state.logged_in:
                         target_row = i + 1; current_db_key = r[1].strip(); break
                 
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다. 보안 정책상 중복 접속은 제한됩니다.")
+                    st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다.  EMS 보안 정책상 중복 접속은 제한됩니다.")
                     st.session_state.pending_user = u_id
                 else:
                     if target_row != -1:
