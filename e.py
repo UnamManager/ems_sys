@@ -286,7 +286,7 @@ elif choice == "📅 세대관람 예약":
             
             with col_tel:
                 # 2. 전화 연결 버튼 (요청하신 문구와 번호 적용)
-                tel_num = "000-000-0000" # 실제 번호로 수정하세요!
+                tel_num = "062-511-9336" # 실제 번호로 수정하세요!
                 st.link_button(f"📞 취소/변경 문의\n(입주촉진센터) {tel_num}", f"tel:{tel_num}", use_container_width=True)
 
             # ... (이후 submit_btn 클릭 로직 동일)
