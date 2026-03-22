@@ -213,7 +213,7 @@ elif choice == "🔍 등록 매물 조회":
 # ... (앞부분 생략: 로그인/사이드바 로직은 동일)
 
 elif choice == "📅 세대관람 예약":
-    st.title("📅 세대관람 예약 시스템")
+    st.title("📅 세대관람 예약")
     
     time_slots = ["10:00 ~ 11:00", "11:00 ~ 12:00", "13:00 ~ 14:00", "14:00 ~ 15:00", "15:00 ~ 16:00", "16:00 ~ 17:00", "17:00 ~ 18:00"]
     tab1, tab2 = st.tabs(["📝 예약 등록", "📊 단지별 예약 현황"])
@@ -257,10 +257,10 @@ elif choice == "📅 세대관람 예약":
 
         with st.form("reserve_form"):
             c1, c2 = st.columns(2)
-            r_name = c1.text_input("예약자 성함 (실명)")
+            r_name = c1.text_input("예약자 성함(실명)")
             r_agency = c2.text_input("중개업소 명칭")
             memo_input = st.text_area("상세 메모 (특이사항)")
-            st.caption("⚠️ 정보를 다시 한번 확인해주세요. 확정 후에는 수정이 어렵습니다.")
+            st.caption("⚠️ 확정 후 직접 취소가 불가하오니 방문 일정을 재확인해 주세요.")
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
             if submit_btn:
