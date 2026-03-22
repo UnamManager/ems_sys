@@ -272,28 +272,24 @@ elif choice == "📅 세대관람 예약":
             r_agency = c2.text_input("(*필수*) 중개업소 명칭")
             memo_input = st.text_area("(*선택*) 비고 [방문 인원 수 또는 특이사항]")
             
-            # 모바일에서도 안 잘리게 줄바꿈 처리한 안내문구
             st.info("""
                 ⚠️ 확정 후 직접 취소가 불가하오니 신중히 등록 바랍니다.  
                 취소 시 대기 업체를 위해 반드시 사전 연락 부탁드립니다.
             """)
 
-            # --- [수정 포인트 1] 버튼과 대표번호 나란히 배치 ---
-            col_btn, col_tel = st.columns([1, 1.2]) 
+            # --- [수정] 한 줄(가로) 배치 레이아웃 ---
+            col_btn, col_tel = st.columns([1, 1]) # 5:5 비율로 나란히 배치
             
             with col_btn:
+                # 1. 예약 확정 버튼
                 submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             
             with col_tel:
-                # 1. 전화번호 설정
-                tel_num = "000-000-0000" 
-                
-                # 2. 안내 텍스트 (작은 글씨)
-                st.caption("📞 취소/변경 문의 (운영사무국)")
-                
-                # 3. 스트림릿 공식 링크 버튼 (에러 절대 안 남)
-                # 누르면 바로 전화 연결 창이 뜹니다.
-                st.link_button(f"☎️ {tel_num}", f"tel:{tel_num}", use_container_width=True)
+                # 2. 전화 연결 버튼 (요청하신 문구와 번호 적용)
+                tel_num = "000-000-0000" # 실제 번호로 수정하세요!
+                st.link_button(f"📞 취소/변경 문의\n(입주촉진센터) {tel_num}", f"tel:{tel_num}", use_container_width=True)
+
+            # ... (이후 submit_btn 클릭 로직 동일)
             
             if submit_btn:
                 if not r_name or not r_agency: 
