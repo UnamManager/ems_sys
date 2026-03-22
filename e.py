@@ -109,7 +109,7 @@ df_total, user_dict = load_full_data()
 # 🔒 로그인 및 중복 체크
 # =========================
 if not st.session_state.logged_in:
-    st.title("🔒 EMS 협력사 로그인")
+    st.title("🔒 EMS 로그인")
     with st.form("login"):
         u_id = st.text_input("ID(아이디)").strip()
         u_pw = st.text_input("PW(비밀번호)", type="password").strip()
@@ -154,8 +154,8 @@ if not sync_session(st.session_state.user_id, st.session_state.session_key):
 # 🏠 메인 사이드바
 # =========================
 menu_options = ["📊 실시간 매물등록 현황", "🔍 등록 매물 조회"]
-if st.session_state.auth_res: menu_options.append("📅 예약 관리자")
-if st.session_state.auth_manage: menu_options.append("⚙️ 매물 관리자")
+if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
+if st.session_state.auth_manage: menu_options.append("⚙️관리자 모드")
 
 with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 접속 중")
@@ -214,7 +214,7 @@ elif choice == "🔍 등록 매물 조회":
     if search_ho: df_v = df_v[df_v["호수"] == search_ho]
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
-elif choice == "📅 예약 관리자":
+elif choice == "📅 세대관람 예약":
     st.title("📅 세대관람 예약 관리")
     tab1, tab2 = st.tabs(["📅 예약 등록", "📊 예약 현황"])
     with tab1:
@@ -268,7 +268,7 @@ elif choice == "📅 예약 관리자":
             else: st.info("예약 데이터가 없습니다.")
         except: st.error("데이터 로드 실패")
 
-elif choice == "⚙️ 매물 관리자":
+elif choice == "⚙️관리자 모드":
     st.title("⚙️ 매물 통합 관리")
     col1, col2, col3 = st.columns(3)
     edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
