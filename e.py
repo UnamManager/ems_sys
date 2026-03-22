@@ -216,7 +216,6 @@ elif choice == "🔍 등록 매물 조회":
 elif choice == "📅 세대관람 예약":
     st.title("📅 세대관람 예약 시스템")
     
-    # 시간대 설정 (7개 타임)
     time_slots = [
         "10:00 ~ 11:00", "11:00 ~ 12:00", "13:00 ~ 14:00", 
         "14:00 ~ 15:00", "15:00 ~ 16:00", "16:00 ~ 17:00", "17:00 ~ 18:00"
@@ -228,10 +227,8 @@ elif choice == "📅 세대관람 예약":
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
         r_date_val = st.date_input("방문 날짜 선택", date.today())
         
-        # 실시간 예약 현황 체크
         try:
             target_ws = sheet.worksheet(f"{res_dj}_관람예약")
-            # 헤더: 날짜, 예약자, 중개업소, 세대수, 동, 호수, 타입, 시간, 비고 (매니저 삭제됨)
             existing_data = pd.DataFrame(target_ws.get_all_values()[1:], 
                                          columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
             daily_res = existing_data[existing_data["날짜"] == r_date_val.strftime("%Y-%m-%d")]
@@ -241,11 +238,13 @@ elif choice == "📅 세대관람 예약":
         t_val = st.selectbox("방문 시간 선택", time_slots)
         current_res_count = len(daily_res[daily_res["시간"] == t_val]) if not daily_res.empty else 0
         
+        # --- [UI 개선: 예약 현황 표시] ---
         if current_res_count >= 3:
-            st.error(f"🚫 해당 시간대({t_val})는 이미 예약이 모두 차서 선택이 불가능합니다. (3/3)")
+            st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)")
             can_reserve = False
         else:
-            st.info(f"✅ 현재 예약 가능합니다. (현재 {current_res_count}/3)")
+            st.info(f"✅ 현재 {3 - current_res_count}자리 예약 가능합니다. (현재 {current_res_count}/3)")
+            st.progress(current_res_count / 3) # 시각적인 게이지 추가
             can_reserve = True
 
         st.divider()
@@ -271,63 +270,79 @@ elif choice == "📅 세대관람 예약":
             r_agency = c2.text_input("중개업소 명칭")
             memo_input = st.text_area("상세 메모 (특이사항)")
             
-            # 안내 문구 추가
-            st.caption("⚠️ 중복 예약 방지 및 원활한 관람을 위해 예약 정보를 신중히 확인 후 확정해 주세요.")
+            st.caption("⚠️ 정보를 다시 한번 확인해주세요. 확정 후에는 수정이 어렵습니다.")
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
             if submit_btn:
                 if not r_name or not r_agency:
                     st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
-                    # 데이터 저장 (매니저 컬럼 제외된 순서로 저장)
                     rows = [[r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", 
                              s["동"], s["호수"], s["타입"], t_val, memo_input] for s in r_items]
                     target_ws.append_rows(rows)
                     
-                    # 이메일 알림
-                    m_content = f"📢 새로운 예약 등록({res_dj})\n일시: {r_date_val} {t_val}\n예약자: {r_name}({r_agency})\n세대: {r_items[0]['동']}동 외 {r_count-1}건"
+                    # --- [메일 내용 상세화] ---
+                    unit_info_str = ""
+                    for idx, item in enumerate(r_items):
+                        unit_info_str += f"- {idx+1}번째 세대: {item['동']}동 {item['호수']}호 ({item['타입']}타입)\n"
+
+                    m_content = f"""
+📢 [EMS] 새로운 세대관람 예약이 확정되었습니다.
+
+[예약 정보]
+■ 단지명: {res_dj}
+■ 일시: {r_date_val} ({t_val})
+■ 예약자: {r_name} (업소명: {r_agency})
+■ 총 세대수: {r_count}세대
+
+[관람 세대 상세]
+{unit_info_str}
+■ 메모: {memo_input if memo_input else '없음'}
+                    """
                     send_email_notification(m_content)
                     
-                    st.success("✅ 예약이 정상적으로 접수되었습니다!"); st.cache_data.clear(); st.rerun()
+                    st.balloons() # 축하 효과!
+                    st.success(f"✅ {r_name}님, 예약이 성공적으로 확정되었습니다!"); st.cache_data.clear(); st.rerun()
 
     with tab2:
-        st.subheader("📅 단지별 시간대별 예약 현황")
-        sel_dj_view = st.radio("단지 선택", ["1단지", "2단지", "3단지"], horizontal=True)
-        view_date = st.date_input("조회 날짜", date.today(), key="view_date")
+        st.subheader("📅 단지별 실시간 예약 현황판")
+        sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
+        view_date = st.date_input("조회 일자", date.today(), key="view_date")
         
         try:
             v_ws = sheet.worksheet(f"{sel_dj_view}_관람예약")
             v_data = pd.DataFrame(v_ws.get_all_values()[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
             v_daily = v_data[v_data["날짜"] == view_date.strftime("%Y-%m-%d")].copy()
             
-            # 예약자 성함 마스킹 함수
-            def mask_name(name):
-                if len(name) <= 1: return "*"
-                if len(name) == 2: return name[0] + "*"
-                return name[0] + "*" * (len(name)-2) + name[-1]
+            # 성함 마스킹
+            def mask_name(n):
+                return n[0] + "*" * (len(n)-1) if len(n) > 1 else n
             
-            if not v_daily.empty:
-                v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
+            if not v_daily.empty: v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
             
-            # 시간대별 요약 대시보드 (0/3)
-            cols = st.columns(7)
+            # --- [UI 개선: 시간대별 카드 형태 대시보드] ---
+            st.write(f"#### 🏘️ {view_date} ({sel_dj_view}) 현황")
+            cols = st.columns(len(time_slots))
             for idx, slot in enumerate(time_slots):
                 count = len(v_daily[v_daily["시간"] == slot])
-                status_color = "🔴" if count >= 3 else "🟢"
                 with cols[idx]:
-                    st.metric(label=slot.split("~")[0], value=f"{count}/3", delta=status_color, delta_color="normal")
+                    # Metric 대신 텍스트와 색상으로 더 깔끔하게 표현
+                    slot_time = slot.split(" ~ ")[0]
+                    if count >= 3:
+                        st.markdown(f"**{slot_time}**\n\n🔴 **예약 마감**")
+                    else:
+                        st.markdown(f"**{slot_time}**\n\n🟢 **{count}/3**")
             
             st.divider()
             
-            # 협력사 공개용 테이블 (중개업소, 비고 제외)
             if len(v_daily) > 0:
-                # 형이 요청한 항목만 필터링: 예약날짜/예약자(마스킹)/관람세대수/동/호수/예약시간
+                # 보안 노출 항목만 선별
                 display_df = v_daily[["날짜", "예약자", "세대수", "동", "호수", "시간"]]
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
             else:
                 st.info("해당 날짜에 등록된 예약이 없습니다.")
         except:
-            st.error("데이터 로드 실패. 시트 컬럼 순서를 확인하세요.")
+            st.error("현황 데이터를 불러오는 중 오류가 발생했습니다.")
 
 elif choice == "⚙️관리자 모드":
     st.title("⚙️ 매물 통합 관리")
