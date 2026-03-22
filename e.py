@@ -290,16 +290,15 @@ elif choice == "📅 세대관람 예약":
                 # 1. 실제 번호로 수정!
                 tel_num = "062-511-9336" 
                 
-                # 2. 에러 방지를 위해 format 방식 사용 (f-string 중괄호 충돌 회피)
-                info_html = """
-                <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 10px; text-align: center;">
-                    <span style="font-size: 0.75rem; color: #666;">📞 취소/변경 문의 (입주촉진센터)</span><br>
-                    <a href="tel:{0}" style="text-decoration: none; color: #007bff; font-size: 1.1rem; font-weight: bold;">{0}</a>
-                    <p style="margin: 5px 0 0 0; font-size: 0.7rem; color: #999;">(모바일은 번호 클릭 시 연결)</p>
-                </div>
-                """.format(tel_num)
-                
-                st.markdown(info_html, unsafe_allow_with_html=True)
+                # 2. HTML 없이 스트림릿 기본 기능으로 박스 만들기
+                with st.container(border=True):
+                    st.caption("📞 취소/변경 문의 (입주촉진센터)")
+                    # PC에서는 일반 텍스트, 모바일에서는 클릭 가능한 링크처럼 작동
+                    st.markdown(f"### **{tel_num}**")
+                    st.caption("(모바일은 번호 클릭 시 연결)")
+                    
+                    # 버튼 대신 투명한 링크 느낌으로 하단에 배치
+                    st.link_button("📞 전화걸기", f"tel:{tel_num}", use_container_width=True)
             
             if submit_btn:
                 if not r_name or not r_agency: 
