@@ -317,7 +317,7 @@ elif choice == "📅 세대관람 예약":
                     st.balloons() # 축하 효과!
                     st.success(f"✅ {r_name}님, 예약이 성공적으로 확정되었습니다!"); st.cache_data.clear(); st.rerun()
 
-    with tab2:
+        with tab2:
         st.subheader("📅 단지별 실시간 예약 현황판")
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
@@ -327,29 +327,23 @@ elif choice == "📅 세대관람 예약":
             v_data = pd.DataFrame(v_ws.get_all_values()[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
             v_daily = v_data[v_data["날짜"] == view_date.strftime("%Y-%m-%d")].copy()
             
+            # --- [추가] 시간순 정렬 ---
+            # '시간' 컬럼을 기준으로 오름차순 정렬 (10:00가 맨 위로!)
+            if not v_daily.empty:
+                v_daily = v_daily.sort_values(by="시간")
+            
             # 성함 마스킹
             def mask_name(n):
                 return n[0] + "*" * (len(n)-1) if len(n) > 1 else n
             
             if not v_daily.empty: v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
             
-            # --- [UI 개선: 시간대별 카드 형태 대시보드] ---
-            st.write(f"#### 🏘️ {view_date} ({sel_dj_view}) 현황")
-            cols = st.columns(len(time_slots))
-            for idx, slot in enumerate(time_slots):
-                count = len(v_daily[v_daily["시간"] == slot])
-                with cols[idx]:
-                    # Metric 대신 텍스트와 색상으로 더 깔끔하게 표현
-                    slot_time = slot.split(" ~ ")[0]
-                    if count >= 3:
-                        st.markdown(f"**{slot_time}**\n\n🔴 **예약 마감**")
-                    else:
-                        st.markdown(f"**{slot_time}**\n\n🟢 **{count}/3**")
+            # ... (중략: 시간대별 카드 UI 부분) ...
             
             st.divider()
             
             if len(v_daily) > 0:
-                # 보안 노출 항목만 선별
+                # 보안 노출 항목만 선별해서 출력
                 display_df = v_daily[["날짜", "예약자", "세대수", "동", "호수", "시간"]]
                 st.dataframe(display_df, use_container_width=True, hide_index=True)
             else:
