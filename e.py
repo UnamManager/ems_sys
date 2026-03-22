@@ -260,7 +260,7 @@ elif choice == "📅 세대관람 예약":
             r_name = c1.text_input("예약자 성함(실명)")
             r_agency = c2.text_input("중개업소 명칭")
             memo_input = st.text_area("상세 메모 (특이사항)")
-            st.caption("⚠️ 확정 후 직접 취소가 불가하오니 방문 일정을 재확인해 주세요.")
+            st.caption("⚠️ 확정 후 직접 취소가 불가하므로 일정 재확인 후 신중히 등록해 주십시오. 예약 취소 시에는 대기 중인 다른 업체들을 위해 반드시 사전에 연락 주시기 바랍니다.")
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
             if submit_btn:
