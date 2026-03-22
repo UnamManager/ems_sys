@@ -136,7 +136,7 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 시작합니다."):
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 EMS서비스를 시작합니다."):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
@@ -153,7 +153,7 @@ if not sync_session(st.session_state.user_id, st.session_state.session_key):
 # =========================
 # 🏠 메인 사이드바
 # =========================
-menu_options = ["📊 실시간 매물등록 현황", "🔍 등록 매물 조회"]
+menu_options = ["📊 실시간 현황", "🔍 등록 매물 조회"]
 if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
 if st.session_state.auth_manage: menu_options.append("⚙️관리자 모드")
 
@@ -185,8 +185,8 @@ def apply_style(df):
 # =========================
 # 📋 페이지별 로직 (예약 등록 시 메일 발송 연동)
 # =========================
-if choice == "📊 실시간 매물등록 현황":
-    st.title("📊 실시간 매물등록 현황")
+if choice == "📊 실시간 현황":
+    st.title("📊 실시간 현황")
     c1, c2, c3 = st.columns(3)
     c1.metric("📌 전체", f"{len(df_total)}개")
     c2.metric("✅ 거래완료", f"{len(df_total[df_total['거래여부']=='거래완료'])}개")
