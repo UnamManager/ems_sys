@@ -274,31 +274,24 @@ elif choice == "📅 세대관람 예약":
             r_agency = c2.text_input("(*필수*) 중개업소 명칭")
             memo_input = st.text_area("(*선택*) 비고 [방문 인원 수 또는 특이사항]")
             
-            st.info("""
-                ⚠️ 확정 후 직접 취소가 불가하오니 신중히 등록 바랍니다.  
-                취소 시 대기 업체를 위해 반드시 사전 연락 부탁드립니다.
-            """)
+# --- [수정] 좌우 대칭형 레이아웃 ---
+            col_btn, col_tel = st.columns([1, 1]) 
 
-            # --- [수정] 한 줄(가로) 배치 레이아웃 ---
-            col_btn, col_tel = st.columns([1, 1]) # 5:5 비율로 나란히 배치
-            
             with col_btn:
-                # 1. 예약 확정 버튼
-                submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
-            
-            with col_tel:
-                # 1. 실제 번호로 수정!
-                tel_num = "062-511-9336" 
-                
-                # 2. HTML 없이 스트림릿 기본 기능으로 박스 만들기
                 with st.container(border=True):
-                    st.caption("📞 취소/변경 문의 (입주촉진센터)")
-                    # PC에서는 일반 텍스트, 모바일에서는 클릭 가능한 링크처럼 작동
-                    st.markdown(f"### **{tel_num}**")
-                    st.caption("(모바일은 번호 클릭 시 연결)")
-                    
-                    # 버튼 대신 투명한 링크 느낌으로 하단에 배치
-                    st.link_button("📞 전화걸기", f"tel:{tel_num}", use_container_width=True)
+                    st.caption("⚠️ 확정 후 직접 취소가 불가하오니 신중히 등록 바랍니다.")
+                    st.write("세대관람 예약을 확정하시겠습니까?")
+                    # 아래에 버튼 배치
+                    submit_btn = st.form_submit_button("📅 예약 최종 확정", 
+                                                    disabled=not can_reserve, 
+                                                    use_container_width=True)
+            with col_tel:
+                with st.container(border=True):
+                    tel_num = "062-511-9336" # 실제 번호로 수정!
+                    st.caption("📞 취소/변경 문의")
+                    st.write(f"**입주촉진센터: {tel_num}**")
+                    # 아래에 버튼 배치
+                    st.link_button("☎️ 전화 연결", f"tel:{tel_num}", use_container_width=True)
             
             if submit_btn:
                 if not r_name or not r_agency: 
