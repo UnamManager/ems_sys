@@ -131,7 +131,7 @@ if not st.session_state.logged_in:
                 
                 # 중복 체크 로직
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다.")
+                    st.error("🔒 다른 기기에서 로그인하여 EMS시스템 사용이 제한됩니다..")
                     st.session_state.pending_user = u_id
                 else:
                     if target_row != -1: 
@@ -142,7 +142,7 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 시작합니다."):
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고/n현재 기기에서 EMS서비스를 시작합니다."):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
@@ -171,7 +171,7 @@ with st.sidebar:
             pw_in = st.text_input("관리자 코드 입력", type="password")
             if pw_in == ADMIN_PASSWORD_MANAGE: st.session_state.auth_manage = True; st.rerun()
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
-    if st.button("🔓 로그아웃"):
+    if st.button("🔒 로그아웃"):
         try:
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
@@ -223,7 +223,7 @@ elif choice == "🔍 등록 매물 조회":
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 elif choice == "📅 세대관람 예약":
-    st.title("📅 세대관람 예약 시스템")
+    st.title("📋 세대관람 예약 시스템")
     time_slots = ["10:00 ~ 11:00", "11:00 ~ 12:00", "13:00 ~ 14:00", "14:00 ~ 15:00", "15:00 ~ 16:00", "16:00 ~ 17:00", "17:00 ~ 18:00"]
     tab1, tab2 = st.tabs(["📝 예약 등록", "📊 단지별 예약 현황"])
     
@@ -263,21 +263,21 @@ elif choice == "📅 세대관람 예약":
 
         with st.form("reserve_form"):
             c1, c2 = st.columns(2)
-            r_name = c1.text_input("(*필수*) 예약자 성함[실명]")
-            r_agency = c2.text_input("(*필수*) 중개업소 명칭")
-            memo_input = st.text_area("(*선택*) 비고 [방문 인원 수 또는 특이사항]")
+            r_name = c1.text_input("(📝필수) 예약자 성함[실명]")
+            r_agency = c2.text_input("(📝필수) 중개업소 명칭")
+            memo_input = st.text_area("(선택) 비고 [방문 인원 수 또는 특이사항]")
             col_btn, col_tel = st.columns([1, 1]) 
             with col_btn:
                 with st.container(border=True):
-                    st.caption("확정 시 직접 취소가 불가능하오니 신중한 등록 부탁드립니다.")
+                    st.caption("⚠️확정 시 직접 취소가 불가능하오니 신중한 등록 부탁드립니다.")
                     st.write(f"**{st.session_state.user_id}님 예약을 확정하시겠습니까?**")
                     submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             with col_tel:
                 with st.container(border=True):
                     tel_num = "062-511-9336" 
-                    st.caption("취소/변경해야 하는 경우 미리 사전에 연락 부탁드립니다.")
+                    st.caption("⚠️취소/변경해야 하는 경우 미리 사전에 연락 부탁드립니다.")
                     st.write(f"**입주촉진센터: {tel_num}**")
-                    st.link_button("☎️ 전화 연결 (모바일 환경에서 눌러주세요)", f"tel:{tel_num}", use_container_width=True)
+                    st.link_button("☎️ 대표번호 문의연결 (모바일 환경에서 눌러주세요)", f"tel:{tel_num}", use_container_width=True)
             if submit_btn:
                 if not r_name or not r_agency: st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
@@ -292,12 +292,12 @@ elif choice == "📅 세대관람 예약":
                     st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
 
     with tab2:
-        st.subheader("📅 단지별 실시간 예약 현황판")
+        st.subheader("📋 단지별 실시간 예약 현황판")
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
         try:
             v_ws = sheet.worksheet(f"{sel_dj_view}_관람예약")
-            v_data = pd.DataFrame(v_ws.get_all_values()[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
+            v_data = pd.DataFrame(v_ws.get_all_values()[1:], columns=["예약날짜","예약자","중개업소","관람세대수","동","호수","타입","예약시간","비고"])
             v_daily = v_data[v_data["날짜"] == view_date.strftime("%Y-%m-%d")].copy()
             rows_to_show = [time_slots[i:i + 3] for i in range(0, len(time_slots), 3)]
             for row in rows_to_show:
@@ -314,7 +314,7 @@ elif choice == "📅 세대관람 예약":
             if not v_daily.empty:
                 def mask_name(n): return n[0] + "*" * (len(n)-1) if len(n) > 1 else n
                 v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
-                st.dataframe(v_daily[["예약자", "세대수", "동", "호수", "시간"]], use_container_width=True, hide_index=True)
+                st.dataframe(v_daily[["예약자", "관람세대수", "동", "호수", "예약시간"]], use_container_width=True, hide_index=True)
             else: st.info("해당 날짜에 등록된 예약이 없습니다.")
         except: st.error("데이터 로드 오류")
 
