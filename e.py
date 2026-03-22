@@ -32,6 +32,8 @@ if "auth_manage" not in st.session_state: st.session_state["auth_manage"] = Fals
 ADMIN_PASSWORD_MANAGE = "ua0952"
 TIME_SLOTS = ["10:00 ~ 11:00", "11:00 ~ 12:00", "13:00 ~ 14:00", "14:00 ~ 15:00", "15:00 ~ 16:00", "16:00 ~ 17:00", "17:00 ~ 18:00"]
 NIGHT_SLOTS = ["16:00 ~ 17:00", "17:00 ~ 18:00"]
+# 시트 컬럼명 정의 (에러 방지를 위해 상단 배치)
+COL_NAMES = ["예약날짜", "예약자", "중개업소", "관람세대수", "동", "호수", "타입", "예약시간", "비고"]
 
 # 📩 이메일 알림
 def send_email_notification(content):
@@ -100,7 +102,6 @@ df_total, user_dict = load_full_data()
 # =========================
 # 🔒 로그인 로직
 # =========================
-
 if not st.session_state.logged_in:
     st.title("🔒 EMS 로그인")
     with st.form("login"):
@@ -112,7 +113,7 @@ if not st.session_state.logged_in:
                 for i, r in enumerate(all_status):
                     if r[0] == u_id: target_row = i + 1; current_db_key = r[1].strip(); break
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🔒현재 다른 기기에서 접속 중인 계정입니다.  보안 정책상 중복 접속은 서비스 사용이 제한됩니다."); st.session_state.pending_user = u_id
+                    st.error("🔒현재 다른 기기에서 접속 중인 계정입니다. 보안 정책상 중복 접속은 서비스 사용이 제한됩니다."); st.session_state.pending_user = u_id
                 else:
                     if target_row != -1: ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
                     else: ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
@@ -174,8 +175,9 @@ elif choice == "🔍 등록 매물 조회":
     for col in ["매매가", "월세", "비고"]:
         if col in df_v.columns: df_v.loc[mask, col] = "🔒 거래완료"
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
+
 # =========================
-# 📅 세대관람 예약 (핵심 수정 구역)
+# 📅 세대관람 예약
 # =========================
 elif choice == "📅 세대관람 예약":
     st.title("📋 세대관람 예약 시스템")
@@ -186,20 +188,18 @@ elif choice == "📅 세대관람 예약":
         r_date_val = st.date_input("방문 날짜 선택", date.today())
         t_val = st.selectbox("방문 시간 선택", TIME_SLOTS)
         
-        # [수정] 야간 자동 분류 로직
         target_sheet_name = "야간_관람예약" if t_val in NIGHT_SLOTS else f"{res_dj}_관람예약"
         
         try:
             target_ws = sheet.worksheet(target_sheet_name); all_res = target_ws.get_all_values()
-            # 정확한 컬럼명 '예약날짜'와 '예약시간' 사용
-            col_names = ["예약날짜", "예약자", "중개업소", "관람세대수", "동", "호수", "타입", "예약시간", "비고"]
             if len(all_res) > 1:
                 daily_df = pd.DataFrame(all_res[1:], columns=all_res[0])
-                # 예약 인원 체크
                 mask = (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)
                 current_res_count = len(daily_df[mask])
             else: current_res_count = 0
-        except: st.error(f"⚠️ '{target_sheet_name}' 시트 로드 실패. 시트 이름을 확인하세요."); st.stop()
+            can_reserve_load = True
+        except: 
+            st.error(f"⚠️ '{target_sheet_name}' 시트 로드 실패. 구글 시트에 해당 시트가 있는지 확인하세요."); st.stop()
 
         if current_res_count >= 3:
             st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)"); can_reserve = False
@@ -223,16 +223,14 @@ elif choice == "📅 세대관람 예약":
                     submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             with col_tel:
                 with st.container(border=True):
-                    tel_num = "062-511-9336"; st.write(f"**입주촉진센터: {tel_num}**")
+                    tel_num = "062-511-9336"; st.caption("⚠️취소/변경이 필요한 경우 미리 사전에 연락 부탁드립니다."); st.write(f"**입주촉진센터: {tel_num}**")
                     st.link_button("☎️ 대표번호 문의연결", f"tel:{tel_num}", use_container_width=True)
             
             if submit_btn:
                 if not r_name or not r_agency: st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
-                    # [요청사항1] 동/호수 매칭 가독성 수정
                     combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
                     types_str = ", ".join([s["타입"] for s in r_items])
-                    # 시트 컬럼 순서: 예약날짜/예약자/중개업소/관람세대수/동/호수/타입/예약시간/비고
                     new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, "", types_str, t_val, memo_input]
                     target_ws.append_row(new_row)
                     st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
@@ -242,21 +240,18 @@ elif choice == "📅 세대관람 예약":
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
         try:
-            # 통합 조회 (일반+야간)
             ws_n = sheet.worksheet(f"{sel_dj_view}_관람예약"); d_n = ws_n.get_all_values()
             ws_y = sheet.worksheet("야간_관람예약"); d_y = ws_y.get_all_values()
-            df_n = pd.DataFrame(d_n[1:], columns=d_n[0]) if len(d_n) > 1 else pd.DataFrame(columns=col_names)
-            df_y = pd.DataFrame(d_y[1:], columns=d_y[0]) if len(d_y) > 1 else pd.DataFrame(columns=col_names)
+            df_n = pd.DataFrame(d_n[1:], columns=d_n[0]) if len(d_n) > 1 else pd.DataFrame(columns=COL_NAMES)
+            df_y = pd.DataFrame(d_y[1:], columns=d_y[0]) if len(d_y) > 1 else pd.DataFrame(columns=COL_NAMES)
             v_all = pd.concat([df_n, df_y], ignore_index=True)
             
             if not v_all.empty:
                 v_daily = v_all[v_all["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
-                # [요청사항2] 예약시간 순으로 정렬
                 v_daily['시간순서'] = v_daily['예약시간'].apply(lambda x: TIME_SLOTS.index(x) if x in TIME_SLOTS else 99)
                 v_daily = v_daily.sort_values('시간순서').drop(columns=['시간순서'])
             else: v_daily = pd.DataFrame()
 
-            # 시간 카드 표시
             rows_to_show = [TIME_SLOTS[i:i + 3] for i in range(0, len(TIME_SLOTS), 3)]
             for row in rows_to_show:
                 cols = st.columns(3)
@@ -273,7 +268,9 @@ elif choice == "📅 세대관람 예약":
             else: st.info("해당 날짜에 등록된 예약이 없습니다.")
         except Exception as e: st.error(f"현황판 로드 오류: {e}")
 
-
+# =========================
+# ⚙️관리자 모드
+# =========================
 elif choice == "⚙️관리자 모드":
     st.title("⚙️ 매물 통합 관리")
     col1, col2, col3 = st.columns(3)
