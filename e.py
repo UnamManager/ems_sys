@@ -285,10 +285,10 @@ elif choice == "📅 세대관람 예약":
                 submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             
             with col_tel:
-                # 1. 변수 정의 (실제 번호로 수정해!)
+                # 1. 전화번호 변수 설정
                 tel_num = "000-000-0000" 
                 
-                # 2. 마크다운 실행 (변수명 tel_num 확인)
+                # 2. f-string 중괄호 충돌 방지 처리 완료
                 st.markdown(f"""
                     <div style="background-color: #f0f2f6; border-radius: 10px; padding: 5px; border: 1px solid #d1d5db; text-align: center;">
                         <p style="margin: 0; font-size: 0.7rem; color: #555;">📞 취소/변경 문의 (운영사무국)</p>
