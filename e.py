@@ -285,12 +285,16 @@ elif choice == "📅 세대관람 예약":
                 submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             
             with col_tel:
-                # 여기에 실제 대표번호를 넣어주면 돼!
-                tel_number = "062-511-9336" 
+                # 1. 변수 정의 (실제 번호로 수정해!)
+                tel_num = "000-000-0000" 
+                
+                # 2. 마크다운 실행 (변수명 tel_num 확인)
                 st.markdown(f"""
                     <div style="background-color: #f0f2f6; border-radius: 10px; padding: 5px; border: 1px solid #d1d5db; text-align: center;">
-                        <p style="margin: 0; font-size: 0.7rem; color: #555;">📞 취소/변경 문의 (입주촉진센터)</p>
-                        <strong style="font-size: 1.0rem; color: #007bff;"><a href="tel:{tel_number}" style="text-decoration: none; color: inherit;">{tel_number}</a></strong>
+                        <p style="margin: 0; font-size: 0.7rem; color: #555;">📞 취소/변경 문의 (운영사무국)</p>
+                        <strong style="font-size: 1.0rem; color: #007bff;">
+                            <a href="tel:{tel_num}" style="text-decoration: none; color: inherit;">{tel_num}</a>
+                        </strong>
                     </div>
                 """, unsafe_allow_with_html=True)
             
