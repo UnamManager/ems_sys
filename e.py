@@ -141,8 +141,7 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고
-                                        현재 기기에서 EMS 서비스를 시작합니다."):
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 /n현재 기기에서 EMS 서비스를 시작합니다."):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
