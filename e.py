@@ -151,31 +151,30 @@ if not sync_session(st.session_state.user_id, st.session_state.session_key):
     st.error("🚨 다른 사용자의 접속이 감지되어 종료되었습니다."); st.session_state.clear(); st.stop()
 
 # =========================
-# 🏠 메인 사이드바
+# 🏠 메인 사이드바 (수정됨)
 # =========================
-menu_options = ["📊 실시간 현황", "🔍 등록 매물 조회"]
-if st.session_state.auth_res: menu_options.append("📅 세대관람 예약")
-if st.session_state.auth_manage: menu_options.append("⚙️관리자 모드")
+# 관리자 인증 없이도 '세대관람 예약'이 메뉴에 바로 나타나도록 수정했어!
+menu_options = ["📊 실시간 현황", "🔍 등록 매물 조회", "📅 세대관람 예약"]
+
+# '⚙️관리자 모드'만 기존처럼 인증이 필요하게 유지했어.
+if st.session_state.auth_manage: 
+    menu_options.append("⚙️관리자 모드")
 
 with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 접속 중")
     choice = st.radio("메뉴 이동", menu_options)
     st.divider()
+    
+    # 이제 '세대관람 예약'은 밖으로 나갔으니, 여기는 매물 관리용 코드만 남겨두면 돼.
     with st.expander("🛠️ 관리자 인증"):
-        pw_in = st.text_input("코드 입력", type="password")
-        if pw_in == ADMIN_PASSWORD_RES and not st.session_state.auth_res:
-            st.session_state.auth_res = True; st.rerun()
+        pw_in = st.text_input("관리자 코드 입력", type="password")
+        # 매물 관리자 권한만 체크
         if pw_in == ADMIN_PASSWORD_MANAGE and not st.session_state.auth_manage:
-            st.session_state.auth_manage = True; st.rerun()
+            st.session_state.auth_manage = True
+            st.rerun()
+            
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
-    if st.button("🚪 로그아웃"):
-        ws_status = sheet.worksheet("접속현황")
-        all_status = ws_status.get_all_values()
-        for i, r in enumerate(all_status):
-            if r[0] == st.session_state.user_id:
-                ws_status.update(f'B{i+1}', [[""]]); break
-        st.session_state.clear(); st.rerun()
-
+   
 def apply_style(df):
     return df.style.applymap(
         lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "",
