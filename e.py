@@ -8,6 +8,8 @@ import uuid
 import time
 import smtplib
 from email.mime.text import MIMEText
+import streamlit_javascript as st_js
+
 
 # 1. 페이지 설정
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
@@ -285,11 +287,18 @@ elif choice == "📅 세대관람 예약":
                 submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             
             with col_tel:
-                # 2. 전화 연결 버튼 (요청하신 문구와 번호 적용)
-                tel_num = "062-511-9336" # 실제 번호로 수정하세요!
-                st.link_button(f"📞 취소/변경 문의\n(입주촉진센터) {tel_num}", f"tel:{tel_num}", use_container_width=True)
-
-            # ... (이후 submit_btn 클릭 로직 동일)
+                tel_num = "062-511-9336" # 실제 번호로 수정!
+                
+                st.markdown(f"""
+                    <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; text-align: center; line-height: 1.4;">
+                        <span style="font-size: 0.75rem; color: #666; display: block;">📞 취소/변경 문의 (입주촉진센터)</span>
+                        <strong style="font-size: 1rem; color: #007bff;">{tel_num}</strong>
+                        <p style="margin: 5px 0 0 0; font-size: 0.7rem; color: #999; display: block; font-style: italic;">
+                            (모바일은 번호 클릭 시 연결)
+                        </p>
+                    </div>
+                    <a href="tel:{tel_num}" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; z-index: 10; text-decoration: none;">&nbsp;</a>
+                """, unsafe_allow_with_html=True)
             
             if submit_btn:
                 if not r_name or not r_agency: 
