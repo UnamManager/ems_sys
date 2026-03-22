@@ -141,7 +141,8 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 시작합니다."):
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고
+                                        현재 기기에서 EMS 서비스를 시작합니다."):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
@@ -261,7 +262,8 @@ elif choice == "📅 세대관람 예약":
             r_agency = c2.text_input("중개업소 명칭")
             memo_input = st.text_area("상세 메모 (특이사항)")
             st.caption("""
-                    ⚠️확정 후 직접 취소가 불가하오니 신중히 등록 바랍니다.취소 시 대기 업체를 위해 반드시 사전 연락 부탁드립니다.
+                    ⚠️확정 후 직접 취소가 불가하오니 신중히 등록 바랍니다.
+                    취소 시 대기 업체를 위해 반드시 사전 연락 부탁드립니다.
                 """)
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
