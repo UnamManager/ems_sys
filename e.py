@@ -239,19 +239,29 @@ elif choice == "📅 세대관람 예약":
         st.subheader("📋 단지별 실시간 예약 현황판")
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
+        
         try:
+            # 1. 시트 데이터 가져오기
             ws_n = sheet.worksheet(f"{sel_dj_view}_관람예약"); d_n = ws_n.get_all_values()
             ws_y = sheet.worksheet("야간_관람예약"); d_y = ws_y.get_all_values()
+            
+            # 2. 데이터프레임 변환 (헤더가 있는 경우만)
             df_n = pd.DataFrame(d_n[1:], columns=d_n[0]) if len(d_n) > 1 else pd.DataFrame(columns=COL_NAMES)
             df_y = pd.DataFrame(d_y[1:], columns=d_y[0]) if len(d_y) > 1 else pd.DataFrame(columns=COL_NAMES)
             v_all = pd.concat([df_n, df_y], ignore_index=True)
             
             if not v_all.empty:
+                # 선택한 날짜 데이터만 필터링
                 v_daily = v_all[v_all["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
-                v_daily['시간순서'] = v_daily['예약시간'].apply(lambda x: TIME_SLOTS.index(x) if x in TIME_SLOTS else 99)
-                v_daily = v_daily.sort_values('시간순서').drop(columns=['시간순서'])
-            else: v_daily = pd.DataFrame()
+                
+                # [핵심 수정] 파이썬의 Categorical 기능을 써서 TIME_SLOTS 순서대로 강제 정렬
+                # '시간순서'라는 컬럼을 새로 만들지 않고, '예약시간' 컬럼 자체에 순서를 부여합니다.
+                v_daily['예약시간'] = pd.Categorical(v_daily['예약시간'], categories=TIME_SLOTS, ordered=True)
+                v_daily = v_daily.sort_values('예약시간')
+            else:
+                v_daily = pd.DataFrame()
 
+            # --- 상단 시간대별 요약 카드 표시 (기존 동일) ---
             rows_to_show = [TIME_SLOTS[i:i + 3] for i in range(0, len(TIME_SLOTS), 3)]
             for row in rows_to_show:
                 cols = st.columns(3)
@@ -261,12 +271,23 @@ elif choice == "📅 세대관람 예약":
                         color = "#ff4b4b" if count >= 3 else "#28a745"; bg = "#fff1f1" if count >= 3 else "#f8fff9"
                         st.markdown(f"""<div class="time-card" style="border: 1px solid {color}; background-color: {bg};">
                             <p>{slot.split(' ~ ')[0]}</p><strong style="color: {color};">{'❌ 마감' if count>=3 else f'{count}/3 (여유)'}</strong></div>""", unsafe_allow_html=True)
+            
             st.divider()
+            
+            # --- 하단 상세 내역 표 표시 ---
             if not v_daily.empty:
                 v_daily["예약자"] = v_daily["예약자"].apply(lambda n: n[0] + "*" * (len(n)-1) if len(n) > 1 else n)
-                st.dataframe(v_daily[["예약자", "관람세대수", "동", "예약시간"]].rename(columns={"동":"관람상세"}), use_container_width=True, hide_index=True)
-            else: st.info("해당 날짜에 등록된 예약이 없습니다.")
-        except Exception as e: st.error(f"현황판 로드 오류: {e}")
+                # 최종 출력 (가상 컬럼 없이 깔끔하게 출력)
+                st.dataframe(
+                    v_daily[["예약시간", "예약자", "관람세대수", "동"]].rename(columns={"동":"관람상세"}), 
+                    use_container_width=True, 
+                    hide_index=True
+                )
+            else:
+                st.info("해당 날짜에 등록된 예약이 없습니다.")
+                
+        except Exception as e:
+            st.error(f"현황판 로드 중 오류가 발생했습니다. (사유: {e})")
 
 # =========================
 # ⚙️관리자 모드
