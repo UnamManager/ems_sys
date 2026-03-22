@@ -233,16 +233,16 @@ elif choice == "📅 세대관람 예약":
     
     with tab1:
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
-        r_date_val = st.date_input("방문 날짜 선택", date.today())
+        
+        # --- [중요] target_ws를 여기서 미리 정의해야 에러가 안 나! ---
         try:
             target_ws = sheet.worksheet(f"{res_dj}_관람예약")
-            data = target_ws.get_all_values()
-            existing_data = pd.DataFrame(data[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
-            daily_res = existing_data[existing_data["날짜"] == r_date_val.strftime("%Y-%m-%d")]
-        except: 
-            daily_res = pd.DataFrame()
+        except Exception as e:
+            st.error(f"시트 연결 오류: {e}")
+            st.stop() # 시트 못 찾으면 여기서 멈춤
+        # ------------------------------------------------------
 
-        t_val = st.selectbox("방문 시간 선택", time_slots)
+        r_date_val = st.date_input("방문 날짜 선택", date.today())
         current_res_count = len(daily_res[daily_res["시간"] == t_val]) if not daily_res.empty else 0
         
         if current_res_count >= 3:
