@@ -24,7 +24,7 @@ st.markdown("""
 # =========================
 # 🔑 세션 및 설정
 # =========================
-if "session_key" not in st.session_state: st.session_state["session_key"] = str(uuid.uuid4())
+    if "session_key" not in st.session_state: st.session_state["session_key"] = str(uuid.uuid4())
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 if "user_id" not in st.session_state: st.session_state["user_id"] = ""
 if "auth_manage" not in st.session_state: st.session_state["auth_manage"] = False
