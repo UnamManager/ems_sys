@@ -341,8 +341,7 @@ elif choice == "📅 세대관람 예약":
                     
                     st.cache_data.clear()
                     st.rerun()
-
-      with tab2:
+    with tab2:
         st.subheader("📅 단지별 실시간 예약 현황판")
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
