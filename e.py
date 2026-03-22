@@ -55,7 +55,7 @@ def send_email_notification(content):
         pass # 메일 발송 실패해도 예약은 진행되도록
 
 # =========================
-# 📊 구글 시트 연결
+# 📊 구글 시트 연결 (최적화 버전)
 # =========================
 @st.cache_resource
 def get_gspread_client():
@@ -64,45 +64,58 @@ def get_gspread_client():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
-client = get_gspread_client()
-sheet = client.open("EMS")
+# [중요] 시트 오픈 자체를 캐싱해서 API 호출 폭발 방지
+@st.cache_resource
+def get_ems_sheet():
+    client = get_gspread_client()
+    return client.open("EMS")
+
+# 이제부터 모든 곳에서 이 'sheet' 변수를 쓰면 돼
+sheet = get_ems_sheet()
 
 # --- [실시간 세션 감시 함수] ---
 def sync_session(user_id, my_key):
     try:
+        # 전역 변수인 sheet를 그대로 사용
         ws = sheet.worksheet("접속현황")
         data = ws.get_all_values()
         for i, row in enumerate(data):
             if row[0] == user_id:
                 if row[1] != "" and row[1] != my_key:
                     return False
+                # 업데이트할 때만 API 호출
                 ws.update(f'C{i+1}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
                 return True
         return True
     except: return True
 
-# --- 데이터 로드 ---
-@st.cache_data(ttl=600) # 형의 요청대로 600초로 상향
+# --- 데이터 로드 (API 호출 최소화) ---
+@st.cache_data(ttl=600) 
 def load_full_data():
     try:
         sheets = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
         df_list = []
         for s in sheets:
             try:
-                ws = sheet.worksheet(s); data = ws.get_all_values()
+                ws = sheet.worksheet(s)
+                data = ws.get_all_values()
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
-                    df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
+                    df["단지"] = s.split("_")[0]
+                    df["거래유형"] = s.split("_")[1]
                     for col in ["매매가", "월세"]:
                         df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
                     df_list.append(df)
             except: continue
+            
         user_ws = sheet.worksheet("사용자목록")
         u_data = user_ws.get_all_values()
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
+        
         return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame(), user_dict
     except: return pd.DataFrame(), {}
 
+# 데이터 실행
 df_total, user_dict = load_full_data()
 
 # =========================
