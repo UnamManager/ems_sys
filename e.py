@@ -287,18 +287,19 @@ elif choice == "📅 세대관람 예약":
                 submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             
             with col_tel:
-                tel_num = "062-511-9336" # 실제 번호로 수정!
+                # 1. 실제 번호로 수정!
+                tel_num = "062-511-9336" 
                 
-                st.markdown(f"""
-                    <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; text-align: center; line-height: 1.4;">
-                        <span style="font-size: 0.75rem; color: #666; display: block;">📞 취소/변경 문의 (입주촉진센터)</span>
-                        <strong style="font-size: 1rem; color: #007bff;">{tel_num}</strong>
-                        <p style="margin: 5px 0 0 0; font-size: 0.7rem; color: #999; display: block; font-style: italic;">
-                            (모바일은 번호 클릭 시 연결)
-                        </p>
-                    </div>
-                    <a href="tel:{tel_num}" style="position: absolute; width: 100%; height: 100%; top: 0; left: 0; z-index: 10; text-decoration: none;">&nbsp;</a>
-                """, unsafe_allow_with_html=True)
+                # 2. 에러 방지를 위해 format 방식 사용 (f-string 중괄호 충돌 회피)
+                info_html = """
+                <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 10px; text-align: center;">
+                    <span style="font-size: 0.75rem; color: #666;">📞 취소/변경 문의 (입주촉진센터)</span><br>
+                    <a href="tel:{0}" style="text-decoration: none; color: #007bff; font-size: 1.1rem; font-weight: bold;">{0}</a>
+                    <p style="margin: 5px 0 0 0; font-size: 0.7rem; color: #999;">(모바일은 번호 클릭 시 연결)</p>
+                </div>
+                """.format(tel_num)
+                
+                st.markdown(info_html, unsafe_allow_with_html=True)
             
             if submit_btn:
                 if not r_name or not r_agency: 
