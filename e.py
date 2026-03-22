@@ -124,23 +124,44 @@ if not st.session_state.logged_in:
         
         if login_btn:
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                ws_status = sheet.worksheet("접속현황")
-                all_status = ws_status.get_all_values()
-                target_row = -1; current_db_key = ""
-                for i, r in enumerate(all_status):
-                    if r[0] == u_id:
-                        target_row = i + 1; current_db_key = r[1].strip(); break
-                
-                if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다.  EMS 보안 정책상 중복 접속은 제한됩니다.")
-                    st.session_state.pending_user = u_id
-                else:
-                    if target_row != -1:
-                        ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
+                try:
+                    # [수정] 접속현황 시트 연결 및 데이터 가져오기 (보호막 추가)
+                    ws_status = sheet.worksheet("접속현황")
+                    
+                    # API 호출 횟수를 줄이기 위해 가져오기 시도
+                    all_status = ws_status.get_all_values()
+                    
+                    target_row = -1
+                    current_db_key = ""
+                    for i, r in enumerate(all_status):
+                        if r[0] == u_id:
+                            target_row = i + 1
+                            current_db_key = r[1].strip()
+                            break
+                    
+                    if current_db_key != "" and current_db_key != st.session_state.session_key:
+                        st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다. EMS 보안 정책상 중복 접속은 제한됩니다.")
+                        st.session_state.pending_user = u_id
                     else:
-                        ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
-                    st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
-            else: st.error("❌ 로그인 정보를 확인해주세요.")
+                        now_time = datetime.now().strftime("%H:%M:%S")
+                        if target_row != -1:
+                            # 기존 정보 업데이트
+                            ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, now_time]])
+                        else:
+                            # 새 접속 정보 추가
+                            ws_status.append_row([u_id, st.session_state.session_key, now_time])
+                        
+                        st.session_state.logged_in = True
+                        st.session_state.user_id = u_id
+                        st.rerun()
+
+                except gspread.exceptions.APIError as e:
+                    # [추가] 구글 API 과부하 시 안내 문구
+                    st.error("🔄 구글 서버 응답이 지연되고 있습니다. 5~10초 후 다시 로그인을 시도해주세요.")
+                except Exception as e:
+                    st.error(f"⚠️ 시스템 오류가 발생했습니다: {e}")
+            else: 
+                st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
         if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 \n현재 기기에서 EMS 서비스를 시작합니다."):
