@@ -15,6 +15,10 @@ st.markdown("""
     <style>
     [data-testid="stElementToolbar"] { display: none !important; }
     .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
+    /* 카드 사이즈 최적화 */
+    .time-card { border-radius: 8px; padding: 5px; text-align: center; margin-bottom: 5px; }
+    .time-card p { margin: 0; font-size: 0.7rem; color: #666; }
+    .time-card strong { font-size: 0.85rem; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -22,7 +26,7 @@ st.markdown("""
 # 🔑 세션 초기화
 # =========================
 if "session_key" not in st.session_state:
-    st.session_state.session_key = str(uuid.uuid4())
+    st.session_key = str(uuid.uuid4())
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "user_id" not in st.session_state: st.session_state.user_id = ""
 if "auth_manage" not in st.session_state: st.session_state.auth_manage = False
@@ -37,19 +41,16 @@ def send_email_notification(content):
         sender = st.secrets["EMAIL_ADDRESS"]
         password = st.secrets["EMAIL_PASSWORD"]
         receiver = st.secrets["ADMIN_NOTIFY_EMAIL"]
-
         msg = MIMEText(content)
         msg["Subject"] = "📢 새로운 관람 예약 등록"
         msg["From"] = sender
         msg["To"] = receiver
-
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(sender, password)
         server.sendmail(sender, receiver, msg.as_string())
         server.quit()
-    except:
-        pass 
+    except: pass 
 
 # =========================
 # 📊 구글 시트 연결
@@ -76,8 +77,7 @@ def sync_session(user_id, my_key):
         data = ws.get_all_values()
         for i, row in enumerate(data):
             if row[0] == user_id:
-                if row[1] != "" and row[1] != my_key:
-                    return False
+                if row[1] != "" and row[1] != my_key: return False
                 ws.update(f'C{i+1}', [[datetime.now().strftime("%Y-%m-%d %H:%M:%S")]])
                 return True
         return True
@@ -101,11 +101,9 @@ def load_full_data():
                         df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
                     df_list.append(df)
             except: continue
-            
         user_ws = sheet.worksheet("사용자목록")
         u_data = user_ws.get_all_values()
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
-        
         return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame(), user_dict
     except: return pd.DataFrame(), {}
 
@@ -120,7 +118,6 @@ if not st.session_state.logged_in:
         u_id = st.text_input("ID(아이디)").strip()
         u_pw = st.text_input("PW(비밀번호)", type="password").strip()
         login_btn = st.form_submit_button("로그인")
-        
         if login_btn:
             if u_id in user_dict and user_dict[u_id] == u_pw:
                 ws_status = sheet.worksheet("접속현황")
@@ -129,34 +126,26 @@ if not st.session_state.logged_in:
                 for i, r in enumerate(all_status):
                     if r[0] == u_id:
                         target_row = i + 1; current_db_key = r[1].strip(); break
-                
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
                     st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다.")
                     st.session_state.pending_user = u_id
                 else:
-                    if target_row != -1:
-                        ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
-                    else:
-                        ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
+                    if target_row != -1: ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
+                    else: ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
                     st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
             else: st.error("❌ 로그인 정보를 확인해주세요.")
-            
     if "pending_user" in st.session_state:
-        btn_text = f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 시작합니다."
-        if st.button(btn_text):
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고 현재 기기에서 시작합니다."):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
                 if r[0] == st.session_state.pending_user:
                     ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
                     break
-            st.session_state.logged_in = True
-            st.session_state.user_id = st.session_state.pending_user
-            del st.session_state.pending_user
-            st.rerun()
+            st.session_state.logged_in = True; st.session_state.user_id = st.session_state.pending_user
+            del st.session_state.pending_user; st.rerun()
     st.stop()
 
-# 실시간 중복 접속 감시
 if not sync_session(st.session_state.user_id, st.session_state.session_key):
     st.error("🚨 다른 사용자의 접속이 감지되어 종료되었습니다."); st.session_state.clear(); st.stop()
 
@@ -173,21 +162,26 @@ with st.sidebar:
     if not st.session_state.auth_manage:
         with st.expander("🛠️ 관리자 인증"):
             pw_in = st.text_input("관리자 코드 입력", type="password")
-            if pw_in == ADMIN_PASSWORD_MANAGE:
-                st.session_state.auth_manage = True
-                st.rerun()
+            if pw_in == ADMIN_PASSWORD_MANAGE: st.session_state.auth_manage = True; st.rerun()
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
+    # 로그아웃 기능
+    if st.button("🔓 로그아웃"):
+        try:
+            ws_status = sheet.worksheet("접속현황")
+            all_status = ws_status.get_all_values()
+            for i, r in enumerate(all_status):
+                if r[0] == st.session_state.user_id:
+                    ws_status.update(f'B{i+1}:C{i+1}', [["", ""]]) # 키 제거
+                    break
+        except: pass
+        st.session_state.clear(); st.rerun()
 
 def apply_style(df):
-    return df.style.applymap(
-        lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "",
-        subset=["거래여부"]
-    )
+    return df.style.applymap(lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "", subset=["거래여부"])
 
 # =========================
 # 📋 페이지별 로직
 # =========================
-
 if choice == "📊 실시간 현황":
     st.title("📊 실시간 현황")
     c1, c2, c3 = st.columns(3)
@@ -195,11 +189,9 @@ if choice == "📊 실시간 현황":
     c2.metric("✅ 거래완료", f"{len(df_total[df_total['거래여부']=='거래완료'])}개")
     c3.metric("🏠 관람가능", f"{len(df_total[df_total['거래여부']=='관람가능'])}개")
     st.divider()
-    
     df_done = df_total[df_total["거래여부"] == "거래완료"].copy()
     for col in ["매매가", "월세", "비고"]:
         if col in df_done.columns: df_done[col] = "🔒 거래완료"
-            
     st.dataframe(apply_style(df_done[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 elif choice == "🔍 등록 매물 조회":
@@ -212,7 +204,6 @@ elif choice == "🔍 등록 매물 조회":
     c1, c2, _ = st.columns([1,1,2])
     search_dong = c1.text_input("🏢 동 검색")
     search_ho = c2.text_input("🔑 호수 검색")
-    
     df_v = df_total.copy()
     if s_danji: df_v = df_v[df_v["단지"].isin(s_danji)]
     if s_bunyang: df_v = df_v[df_v["분양구분"].isin(s_bunyang)]
@@ -220,11 +211,9 @@ elif choice == "🔍 등록 매물 조회":
     if s_type: df_v = df_v[df_v["타입"].isin(s_type)]
     if search_dong: df_v = df_v[df_v["동"] == search_dong]
     if search_ho: df_v = df_v[df_v["호수"] == search_ho]
-    
     mask = df_v["거래여부"] == "거래완료"
     for col in ["매매가", "월세", "비고"]:
         if col in df_v.columns: df_v.loc[mask, col] = "🔒 거래완료"
-            
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 elif choice == "📅 세대관람 예약":
@@ -235,18 +224,15 @@ elif choice == "📅 세대관람 예약":
     with tab1:
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
         r_date_val = st.date_input("방문 날짜 선택", date.today())
-        
-        # [수정] target_ws 및 daily_res를 상단에서 미리 정의하여 NameError 방지
         try:
             target_ws = sheet.worksheet(f"{res_dj}_관람예약")
             all_res = target_ws.get_all_values()
             daily_res = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=["날짜", "시간"])
             daily_res = daily_res[daily_res["날짜"] == r_date_val.strftime("%Y-%m-%d")]
-        except Exception as e:
-            st.error(f"예약 데이터를 불러올 수 없습니다: {e}")
-            st.stop()
+        except: st.error("데이터 로드 오류"); st.stop()
 
         t_val = st.selectbox("방문 시간 선택", time_slots)
+        # 예약 건수 1건당 자리 1개 차감
         current_res_count = len(daily_res[daily_res["시간"] == t_val]) if not daily_res.empty else 0
         
         if current_res_count >= 3:
@@ -254,8 +240,7 @@ elif choice == "📅 세대관람 예약":
             can_reserve = False
         else:
             st.info(f"✅ 현재 {3 - current_res_count}자리 예약 가능합니다. (현재 {current_res_count}/3)")
-            st.progress(current_res_count / 3)
-            can_reserve = True
+            st.progress(current_res_count / 3); can_reserve = True
 
         st.divider()
         f_unit = df_total[df_total["단지"] == res_dj]
@@ -280,15 +265,15 @@ elif choice == "📅 세대관람 예약":
             col_btn, col_tel = st.columns([1, 1]) 
             with col_btn:
                 with st.container(border=True):
-                    st.caption("⚠️ 확정 후 직접 취소 불가")
+                    st.caption("확정 시 직접 취소가 불가능하오니 신중한 등록 부탁드립니다.")
                     st.write(f"**{st.session_state.user_id}님 예약을 확정하시겠습니까?**")
                     submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             with col_tel:
                 with st.container(border=True):
                     tel_num = "062-511-9336" 
-                    st.caption("📞 취소/변경 문의")
+                    st.caption("취소/변경해야 하는 경우 미리 사전에 연락 부탁드립니다.")
                     st.write(f"**입주촉진센터: {tel_num}**")
-                    st.link_button("☎️ 전화 연결", f"tel:{tel_num}", use_container_width=True)
+                    st.link_button("☎️ 전화 연결 (모바일 환경에서 눌러주세요)", f"tel:{tel_num}", use_container_width=True)
             
             if submit_btn:
                 if not r_name or not r_agency: st.error("성함과 업소명을 모두 입력해주세요.")
@@ -296,29 +281,12 @@ elif choice == "📅 세대관람 예약":
                     dongs_str = ", ".join([s["동"] for s in r_items])
                     hos_str = ", ".join([s["호수"] for s in r_items])
                     types_str = ", ".join([s["타입"] for s in r_items])
-                    
-                    new_row = [
-                        r_date_val.strftime("%Y-%m-%d"), 
-                        r_name, 
-                        r_agency, 
-                        f"{len(r_items)}세대", 
-                        dongs_str, 
-                        hos_str, 
-                        types_str, 
-                        t_val, 
-                        memo_input
-                    ]
+                    new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", dongs_str, hos_str, types_str, t_val, memo_input]
                     target_ws.append_row(new_row)
-                    
-                    # 이메일 전송 로직
                     unit_info_str = "".join([f"- {idx+1}번째 세대: {item['동']}동 {item['호수']}호 ({item['타입']}타입)\n" for idx, item in enumerate(r_items)])
                     m_content = f"📢 [EMS] 새로운 예약 확정\n■ 단지: {res_dj}\n■ 일시: {r_date_val} ({t_val})\n■ 예약자: {r_name}({r_agency})\n[상세]\n{unit_info_str}"
                     send_email_notification(m_content)
-                    
-                    st.success(f"✅ {r_name}님, 예약이 성공적으로 확정되었습니다.")
-                    time.sleep(2)
-                    st.cache_data.clear()
-                    st.rerun()
+                    st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
 
     with tab2:
         st.subheader("📅 단지별 실시간 예약 현황판")
@@ -329,35 +297,27 @@ elif choice == "📅 세대관람 예약":
             v_data = pd.DataFrame(v_ws.get_all_values()[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
             v_daily = v_data[v_data["날짜"] == view_date.strftime("%Y-%m-%d")].copy()
             
-            # 카드형 UI (시간대별 카드)
+            # 카드형 UI (모바일 최적화)
             rows_to_show = [time_slots[i:i + 3] for i in range(0, len(time_slots), 3)]
             for row in rows_to_show:
                 cols = st.columns(3)
                 for idx, slot in enumerate(row):
                     count = len(v_daily[v_daily["시간"] == slot]) if not v_daily.empty else 0
                     with cols[idx]:
-                        # 시간 표시 가공
-                        start_time = slot.split(" ~ ")[0]
-                        hr = int(start_time.split(":")[0])
-                        ampm = "AM" if hr < 12 else "PM"
-                        display_time = f"{ampm} {start_time}"
-                        
-                        st.markdown(f"""
-                            <div style="border: 1px solid {'#ff4b4b' if count>=3 else '#28a745'}; border-radius: 10px; padding: 10px; text-align: center; background-color: {'#fff1f1' if count>=3 else '#f8fff9'};">
-                                <p style="margin: 0; font-size: 0.8rem; color: #666;">{display_time}</p>
-                                <strong style="color: {'#ff4b4b' if count>=3 else '#28a745'};">{'❌ 마감' if count>=3 else f'{count}/3 (여유)'}</strong>
-                            </div>
-                        """, unsafe_allow_html=True)
+                        color = "#ff4b4b" if count >= 3 else "#28a745"
+                        bg = "#fff1f1" if count >= 3 else "#f8fff9"
+                        label = "❌ 마감" if count >= 3 else f"{count}/3 (여유)"
+                        st.markdown(f"""<div class="time-card" style="border: 1px solid {color}; background-color: {bg};">
+                            <p>{slot.split(' ~ ')[0]}</p><strong style="color: {color};">{label}</strong></div>""", unsafe_allow_html=True)
             
             st.divider()
             if not v_daily.empty:
                 def mask_name(n): return n[0] + "*" * (len(n)-1) if len(n) > 1 else n
                 v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
-                st.dataframe(v_daily[["예약자", "중개업소", "세대수", "시간"]], use_container_width=True, hide_index=True)
-            else:
-                st.info("해당 날짜에 등록된 예약이 없습니다.")
-        except:
-            st.error("현황 데이터를 불러오는 중 오류가 발생했습니다.")
+                # 요청 컬럼: 예약자(마스킹)/세대수/동/호수/시간
+                st.dataframe(v_daily[["예약자", "세대수", "동", "호수", "시간"]], use_container_width=True, hide_index=True)
+            else: st.info("해당 날짜에 등록된 예약이 없습니다.")
+        except: st.error("데이터 로드 오류")
 
 elif choice == "⚙️관리자 모드":
     st.title("⚙️ 매물 통합 관리")
