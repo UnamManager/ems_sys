@@ -22,7 +22,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =========================
-# 🔑 세션 초기화 (AttributeError 방지 로직)
+# 🔑 세션 초기화
 # =========================
 if "session_key" not in st.session_state:
     st.session_state["session_key"] = str(uuid.uuid4())
@@ -129,9 +129,8 @@ if not st.session_state.logged_in:
                     if r[0] == u_id:
                         target_row = i + 1; current_db_key = r[1].strip(); break
                 
-                # 중복 체크 로직
                 if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🔒 다른 기기에서 로그인하여 EMS시스템 사용이 제한됩니다..")
+                    st.error("🔒 현재 다른 기기에서 접속 중인 계정입니다.  보안 정책상 중복 접속은 제한됩니다.")
                     st.session_state.pending_user = u_id
                 else:
                     if target_row != -1: 
@@ -142,7 +141,7 @@ if not st.session_state.logged_in:
             else: st.error("❌ 로그인 정보를 확인해주세요.")
             
     if "pending_user" in st.session_state:
-        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고/n현재 기기에서 EMS서비스를 시작합니다."):
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고         현재 기기에서 EMS서비스를 시작합니다."):
             ws_status = sheet.worksheet("접속현황")
             all_status = ws_status.get_all_values()
             for i, r in enumerate(all_status):
@@ -225,20 +224,33 @@ elif choice == "🔍 등록 매물 조회":
 elif choice == "📅 세대관람 예약":
     st.title("📋 세대관람 예약 시스템")
     time_slots = ["10:00 ~ 11:00", "11:00 ~ 12:00", "13:00 ~ 14:00", "14:00 ~ 15:00", "15:00 ~ 16:00", "16:00 ~ 17:00", "17:00 ~ 18:00"]
+    night_slots = ["16:00 ~ 17:00", "17:00 ~ 18:00"]
     tab1, tab2 = st.tabs(["📝 예약 등록", "📊 단지별 예약 현황"])
     
     with tab1:
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
         r_date_val = st.date_input("방문 날짜 선택", date.today())
-        try:
-            target_ws = sheet.worksheet(f"{res_dj}_관람예약")
-            all_res = target_ws.get_all_values()
-            daily_res = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=["날짜", "시간"])
-            daily_res = daily_res[daily_res["날짜"] == r_date_val.strftime("%Y-%m-%d")]
-        except: st.error("데이터 로드 오류"); st.stop()
-
         t_val = st.selectbox("방문 시간 선택", time_slots)
-        current_res_count = len(daily_res[daily_res["시간"] == t_val]) if not daily_res.empty else 0
+        
+        # [수정1] 야간 슬롯 분기 로직
+        target_sheet_name = "야간_관람예약" if t_val in night_slots else f"{res_dj}_관람예약"
+        
+        try:
+            target_ws = sheet.worksheet(target_sheet_name)
+            all_res = target_ws.get_all_values()
+            # [수정2] 컬럼명 유연성 확보 (예약날짜 or 날짜)
+            if len(all_res) > 1:
+                daily_res = pd.DataFrame(all_res[1:], columns=all_res[0])
+                date_col = "예약날짜" if "예약날짜" in daily_res.columns else daily_res.columns[0]
+                daily_res = daily_res[daily_res[date_col] == r_date_val.strftime("%Y-%m-%d")]
+            else:
+                daily_res = pd.DataFrame()
+        except Exception as e:
+            st.error(f"데이터 로드 오류 ({target_sheet_name} 시트를 확인하세요)"); st.stop()
+
+        # [수정3] 시간 컬럼명 대응 (예약시간 or 시간)
+        time_col = "예약시간" if not daily_res.empty and "예약시간" in daily_res.columns else "시간"
+        current_res_count = len(daily_res[daily_res[time_col] == t_val]) if not daily_res.empty and time_col in daily_res.columns else 0
         
         if current_res_count >= 3:
             st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)")
@@ -284,10 +296,11 @@ elif choice == "📅 세대관람 예약":
                     dongs_str = ", ".join([s["동"] for s in r_items])
                     hos_str = ", ".join([s["호수"] for s in r_items])
                     types_str = ", ".join([s["타입"] for s in r_items])
+                    # 저장 시에도 시트 컬럼 순서에 맞춤
                     new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", dongs_str, hos_str, types_str, t_val, memo_input]
                     target_ws.append_row(new_row)
                     unit_info_str = "".join([f"- {idx+1}번째 세대: {item['동']}동 {item['호수']}호 ({item['타입']}타입)\n" for idx, item in enumerate(r_items)])
-                    m_content = f"📢 [EMS] 새로운 예약 확정\n■ 단지: {res_dj}\n■ 일시: {r_date_val} ({t_val})\n■ 예약자: {r_name}({r_agency})\n[상세]\n{unit_info_str}"
+                    m_content = f"📢 [EMS] {target_sheet_name} 예약 확정\n■ 일시: {r_date_val} ({t_val})\n■ 예약자: {r_name}({r_agency})\n[상세]\n{unit_info_str}"
                     send_email_notification(m_content)
                     st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
 
@@ -296,14 +309,31 @@ elif choice == "📅 세대관람 예약":
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
         try:
-            v_ws = sheet.worksheet(f"{sel_dj_view}_관람예약")
-            v_data = pd.DataFrame(v_ws.get_all_values()[1:], columns=["예약날짜","예약자","중개업소","관람세대수","동","호수","타입","예약시간","비고"])
-            v_daily = v_data[v_data["날짜"] == view_date.strftime("%Y-%m-%d")].copy()
+            # [수정4] 현황판 통합 조회 (단지시트 + 야간시트)
+            ws_normal = sheet.worksheet(f"{sel_dj_view}_관람예약"); d_normal = ws_normal.get_all_values()
+            ws_night = sheet.worksheet("야간_관람예약"); d_night = ws_night.get_all_values()
+            
+            df_n = pd.DataFrame(d_normal[1:], columns=d_normal[0]) if len(d_normal) > 1 else pd.DataFrame(columns=d_normal[0])
+            df_night = pd.DataFrame(d_night[1:], columns=d_night[0]) if len(d_night) > 1 else pd.DataFrame(columns=d_night[0])
+            
+            # 두 데이터를 합침
+            v_combined = pd.concat([df_n, df_night], ignore_index=True)
+            
+            if not v_combined.empty:
+                # 컬럼명 통일 처리 (예약날짜/날짜, 예약시간/시간)
+                if "예약날짜" in v_combined.columns: v_combined.rename(columns={"예약날짜":"날짜"}, inplace=True)
+                if "예약시간" in v_combined.columns: v_combined.rename(columns={"예약시간":"시간"}, inplace=True)
+                if "관람세대수" in v_combined.columns: v_combined.rename(columns={"관람세대수":"세대수"}, inplace=True)
+                
+                v_daily = v_combined[v_combined["날짜"] == view_date.strftime("%Y-%m-%d")].copy()
+            else:
+                v_daily = pd.DataFrame()
+
             rows_to_show = [time_slots[i:i + 3] for i in range(0, len(time_slots), 3)]
             for row in rows_to_show:
                 cols = st.columns(3)
                 for idx, slot in enumerate(row):
-                    count = len(v_daily[v_daily["시간"] == slot]) if not v_daily.empty else 0
+                    count = len(v_daily[v_daily["시간"] == slot]) if not v_daily.empty and "시간" in v_daily.columns else 0
                     with cols[idx]:
                         color = "#ff4b4b" if count >= 3 else "#28a745"
                         bg = "#fff1f1" if count >= 3 else "#f8fff9"
@@ -314,9 +344,14 @@ elif choice == "📅 세대관람 예약":
             if not v_daily.empty:
                 def mask_name(n): return n[0] + "*" * (len(n)-1) if len(n) > 1 else n
                 v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
-                st.dataframe(v_daily[["예약자", "관람세대수", "동", "호수", "예약시간"]], use_container_width=True, hide_index=True)
+                # 데이터프레임 표시용 컬럼 정리
+                show_cols = ["예약자", "세대수", "동", "호수", "시간"]
+                # 실제 존재하는 컬럼만 표시
+                final_cols = [c for c in show_cols if c in v_daily.columns]
+                st.dataframe(v_daily[final_cols], use_container_width=True, hide_index=True)
             else: st.info("해당 날짜에 등록된 예약이 없습니다.")
-        except: st.error("데이터 로드 오류")
+        except Exception as e:
+            st.error(f"현황판 데이터 로드 오류: {e}")
 
 elif choice == "⚙️관리자 모드":
     st.title("⚙️ 매물 통합 관리")
