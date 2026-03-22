@@ -280,7 +280,7 @@ elif choice == "📅 세대관람 예약":
             with col_btn:
                 with st.container(border=True):
                     st.caption("⚠️ 확정 후 직접 취소가 불가하오니 신중히 등록 바랍니다.")
-                    st.write("세대관람 예약을 확정하시겠습니까?")
+                    st.write(f"**{st.session_state.user_id}님의 세대관람 예약을 확정하시겠습니까?**")
                     # 아래에 버튼 배치
                     submit_btn = st.form_submit_button("📅 예약 최종 확정", 
                                                     disabled=not can_reserve, 
