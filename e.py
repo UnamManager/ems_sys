@@ -254,16 +254,27 @@ elif choice == "📅 세대관람 예약":
     
     with tab1:
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
+        r_date_val = st.date_input("방문 날짜 선택", date.today())
         
-        # --- [중요] target_ws를 여기서 미리 정의해야 에러가 안 나! ---
+        # [수정] daily_res를 여기서 미리 빈 데이터프레임으로 정의 (중요!)
+        daily_res = pd.DataFrame() 
+        
         try:
             target_ws = sheet.worksheet(f"{res_dj}_관람예약")
+            data = target_ws.get_all_values()
+            if len(data) > 1:
+                # 헤더 정보를 포함해 데이터프레임 생성
+                existing_data = pd.DataFrame(data[1:], columns=data[0])
+                # 선택한 날짜의 예약 데이터만 필터링
+                if "날짜" in existing_data.columns:
+                    daily_res = existing_data[existing_data["날짜"] == r_date_val.strftime("%Y-%m-%d")]
         except Exception as e:
-            st.error(f"시트 연결 오류: {e}")
-            st.stop() # 시트 못 찾으면 여기서 멈춤
-        # ------------------------------------------------------
+            # 시트가 없거나 오류가 나도 daily_res는 빈 상태로 유지됨
+            st.warning("예약 데이터를 불러오는 중입니다...")
 
-        r_date_val = st.date_input("방문 날짜 선택", date.today())
+        t_val = st.selectbox("방문 시간 선택", time_slots)
+        
+        # 이제 daily_res가 무조건 존재하므로 에러가 안 남!
         current_res_count = len(daily_res[daily_res["시간"] == t_val]) if not daily_res.empty else 0
         
         if current_res_count >= 3:
