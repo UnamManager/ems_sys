@@ -285,18 +285,19 @@ elif choice == "📅 세대관람 예약":
                 submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve, use_container_width=True)
             
             with col_tel:
-                # 1. 전화번호 변수 설정
+                # 1. 변수 먼저 선언
                 tel_num = "000-000-0000" 
                 
-                # 2. f-string 중괄호 충돌 방지 처리 완료
-                st.markdown(f"""
+                # 2. f-string 대신 일반 문자열로 작성 (에러 방지)
+                html_code = """
                     <div style="background-color: #f0f2f6; border-radius: 10px; padding: 5px; border: 1px solid #d1d5db; text-align: center;">
                         <p style="margin: 0; font-size: 0.7rem; color: #555;">📞 취소/변경 문의 (운영사무국)</p>
                         <strong style="font-size: 1.0rem; color: #007bff;">
-                            <a href="tel:{tel_num}" style="text-decoration: none; color: inherit;">{tel_num}</a>
+                            <a href="tel:""" + tel_num + """" style="text-decoration: none; color: inherit;">""" + tel_num + """</a>
                         </strong>
                     </div>
-                """, unsafe_allow_with_html=True)
+                """
+                st.markdown(html_code, unsafe_allow_with_html=True)
             
             if submit_btn:
                 if not r_name or not r_agency: 
