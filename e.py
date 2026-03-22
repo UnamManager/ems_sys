@@ -210,8 +210,11 @@ elif choice == "🔍 등록 매물 조회":
     if search_ho: df_v = df_v[df_v["호수"] == search_ho]
     st.dataframe(apply_style(df_v[["분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
+# ... (앞부분 생략: 로그인/사이드바 로직은 동일)
+
 elif choice == "📅 세대관람 예약":
     st.title("📅 세대관람 예약 시스템")
+    
     time_slots = ["10:00 ~ 11:00", "11:00 ~ 12:00", "13:00 ~ 14:00", "14:00 ~ 15:00", "15:00 ~ 16:00", "16:00 ~ 17:00", "17:00 ~ 18:00"]
     tab1, tab2 = st.tabs(["📝 예약 등록", "📊 단지별 예약 현황"])
     
@@ -223,7 +226,8 @@ elif choice == "📅 세대관람 예약":
             data = target_ws.get_all_values()
             existing_data = pd.DataFrame(data[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
             daily_res = existing_data[existing_data["날짜"] == r_date_val.strftime("%Y-%m-%d")]
-        except: daily_res = pd.DataFrame()
+        except: 
+            daily_res = pd.DataFrame()
 
         t_val = st.selectbox("방문 시간 선택", time_slots)
         current_res_count = len(daily_res[daily_res["시간"] == t_val]) if not daily_res.empty else 0
@@ -248,7 +252,8 @@ elif choice == "📅 세대관람 예약":
                 u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
                 h_sel = col2.selectbox(f"호수 ({i+1})", u_hos, key=f"h_r_{i}")
                 match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
-                if not match.empty: r_items.append({"동":d_sel, "호수":h_sel, "타입":match.iloc[0]['타입']})
+                if not match.empty: 
+                    r_items.append({"동":d_sel, "호수":h_sel, "타입":match.iloc[0]['타입']})
 
         with st.form("reserve_form"):
             c1, c2 = st.columns(2)
@@ -262,40 +267,44 @@ elif choice == "📅 세대관람 예약":
                 if not r_name or not r_agency: 
                     st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
-                    # 1. 시트 저장
+                    # 데이터 저장
                     rows = [[r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, memo_input] for s in r_items]
                     target_ws.append_rows(rows)
                     
-                    # 2. 메일 발송
+                    # 메일 내용 (상세 버전 유지)
                     unit_info_str = "".join([f"- {idx+1}번째 세대: {item['동']}동 {item['호수']}호 ({item['타입']}타입)\n" for idx, item in enumerate(r_items)])
                     m_content = f"📢 [EMS] 새로운 예약 확정\n■ 단지: {res_dj}\n■ 일시: {r_date_val} ({t_val})\n■ 예약자: {r_name}({r_agency})\n[상세]\n{unit_info_str}"
                     send_email_notification(m_content)
                     
-                    # 3. [수정 포인트] 피드백 보여주기
-                    st.balloons() # 풍선 팡팡!
-                    msg_area = st.empty() # 메시지를 띄울 임시 공간 생성
-                    msg_area.success(f"✅ {r_name}님, 예약이 성공적으로 확정되었습니다!")
+                    # 피드백 문구 (시간 지연 추가)
+                    st.balloons()
+                    st.success(f"✅ {r_name}님, 예약이 성공적으로 확정되었습니다!")
+                    import time
+                    time.sleep(2)  # 형이 문구 볼 수 있게 2초 대기
                     
-                    # 4. 잠깐 대기 (2초 동안 메시지 노출)
-                    time.sleep(2) 
-                    
-                    # 5. 캐시 지우고 새로고침
                     st.cache_data.clear()
                     st.rerun()
+
     with tab2:
         st.subheader("📅 단지별 실시간 예약 현황판")
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
+        
         try:
             v_ws = sheet.worksheet(f"{sel_dj_view}_관람예약")
             v_data = pd.DataFrame(v_ws.get_all_values()[1:], columns=["날짜","예약자","중개업소","세대수","동","호수","타입","시간","비고"])
             v_daily = v_data[v_data["날짜"] == view_date.strftime("%Y-%m-%d")].copy()
-            if not v_daily.empty: v_daily = v_daily.sort_values(by="시간")
             
+            # 시간순 정렬
+            if not v_daily.empty: 
+                v_daily = v_daily.sort_values(by="시간")
+            
+            # 성함 마스킹
             def mask_name(n): return n[0] + "*" * (len(n)-1) if len(n) > 1 else n
-            if not v_daily.empty: v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
+            if not v_daily.empty: 
+                v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
             
-            st.write(f"#### 🏘️ {view_date} ({sel_dj_view}) 요약")
+            # 시간대별 현황 요약 (삼각형 대신 텍스트로)
             cols = st.columns(len(time_slots))
             for idx, slot in enumerate(time_slots):
                 count = len(v_daily[v_daily["시간"] == slot])
@@ -303,12 +312,14 @@ elif choice == "📅 세대관람 예약":
                     slot_time = slot.split(" ~ ")[0]
                     if count >= 3: st.markdown(f"**{slot_time}**\n\n🔴 **마감**")
                     else: st.markdown(f"**{slot_time}**\n\n🟢 **{count}/3**")
+            
             st.divider()
             if len(v_daily) > 0:
                 st.dataframe(v_daily[["날짜", "예약자", "세대수", "동", "호수", "시간"]], use_container_width=True, hide_index=True)
-            else: st.info("해당 날짜에 등록된 예약이 없습니다.")
-        except: st.error("현황 데이터를 불러오는 중 오류가 발생했습니다.")
-
+            else: 
+                st.info("해당 날짜에 등록된 예약이 없습니다.")
+        except: 
+            st.error("현황 데이터를 불러오는 중 오류가 발생했습니다.")
 elif choice == "⚙️관리자 모드":
     st.title("⚙️ 매물 통합 관리")
     col1, col2, col3 = st.columns(3)
