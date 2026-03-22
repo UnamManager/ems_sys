@@ -267,20 +267,21 @@ elif choice == "📅 세대관람 예약":
                 if not r_name or not r_agency: 
                     st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
-                    # 데이터 저장
+                    # 1. 시트 저장 로직
                     rows = [[r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{r_count}세대", s["동"], s["호수"], s["타입"], t_val, memo_input] for s in r_items]
                     target_ws.append_rows(rows)
                     
-                    # 메일 내용 (상세 버전 유지)
+                    # 2. 메일 발송 로직 (상세 리스트 포함)
                     unit_info_str = "".join([f"- {idx+1}번째 세대: {item['동']}동 {item['호수']}호 ({item['타입']}타입)\n" for idx, item in enumerate(r_items)])
                     m_content = f"📢 [EMS] 새로운 예약 확정\n■ 단지: {res_dj}\n■ 일시: {r_date_val} ({t_val})\n■ 예약자: {r_name}({r_agency})\n[상세]\n{unit_info_str}"
                     send_email_notification(m_content)
                     
-                    # 피드백 문구 (시간 지연 추가)
-                    st.balloons()
-                    st.success(f"✅ {r_name}님, 예약이 성공적으로 확정되었습니다!")
+                    # 3. [수정] 풍선 제거! 문구만 확실하게 노출
+                    st.success(f"✅ {r_name}님, 예약이 성공적으로 확정되었습니다.")
+                    
+                    # 4. 사용자가 문구를 읽을 수 있게 2초 대기 후 새로고침
                     import time
-                    time.sleep(2)  # 형이 문구 볼 수 있게 2초 대기
+                    time.sleep(2) 
                     
                     st.cache_data.clear()
                     st.rerun()
