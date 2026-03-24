@@ -30,8 +30,8 @@ if "user_id" not in st.session_state: st.session_state["user_id"] = ""
 if "auth_manage" not in st.session_state: st.session_state["auth_manage"] = False
 
 ADMIN_PASSWORD_MANAGE = "ua0952"
-TIME_SLOTS = ["10:00 ~ 11:00", "11:00 ~ 12:00", "13:00 ~ 14:00", "14:00 ~ 15:00", "15:00 ~ 16:00", "16:00 ~ 17:00", "17:00 ~ 18:00"]
-NIGHT_SLOTS = ["16:00 ~ 17:00", "17:00 ~ 18:00"]
+TIME_SLOTS = ["10:00 ~ 10:45", "11:00 ~ 11:45", "13:00 ~ 13:45", "14:00 ~ 14:45", "15:00 ~ 15:45", "16:00 ~ 16:45", "17:00 ~ 17:45"]
+NIGHT_SLOTS = ["16:00 ~ 16:45", "17:00 ~ 17:45"]
 # 시트 컬럼명 정의 (에러 방지를 위해 상단 배치)
 COL_NAMES = ["예약날짜", "예약자", "중개업소", "관람세대수", "동", "호수", "타입", "예약시간", "비고"]
 
