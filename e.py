@@ -118,7 +118,7 @@ if not st.session_state.logged_in:
                     if target_row != -1: ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
                     else: ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
                     st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
-            else: st.error("❌ 로그인 정보를 확인해주세요.")
+            else: st.error("❌ 로그인 정보를 확인해주세요.[로그인 계정 문의 : 062-511-9336]")
     if "pending_user" in st.session_state:
         if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고\n현재 기기에서 EMS서비스를 시작합니다."):
             ws_status = sheet.worksheet("접속현황"); all_status = ws_status.get_all_values()
