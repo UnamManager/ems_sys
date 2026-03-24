@@ -186,7 +186,7 @@ elif choice == "📅 세대관람 예약":
     with tab1:
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
         r_date_val = st.date_input("방문 날짜 선택", date.today())
-        t_val = st.selectbox("방문 시간 선택", TIME_SLOTS)
+        t_val = st.selectbox("관람 시간 선택", TIME_SLOTS)
         
         target_sheet_name = "야간_관람예약" if t_val in NIGHT_SLOTS else f"{res_dj}_관람예약"
         
