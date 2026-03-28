@@ -227,13 +227,32 @@ elif choice == "📅 세대관람 예약":
                     st.link_button("☎️ 대표번호 문의연결", f"tel:{tel_num}", use_container_width=True)
             
             if submit_btn:
-                if not r_name or not r_agency: st.error("성함과 업소명을 모두 입력해주세요.")
+                if not r_name or not r_agency:
+                    st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
-                    combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
-                    types_str = ", ".join([s["타입"] for s in r_items])
-                    new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, "", types_str, t_val, memo_input]
-                    target_ws.append_row(new_row)
-                    st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
+                    # --- [추가된 필터링 로직] ---
+                    # 1. 현재 선택한 날짜와 시간의 예약 내역만 다시 확인
+                    user_check_mask = (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & \
+                                      (daily_df["예약시간"] == t_val)
+                    
+                    # 2. 비고란이나 숨겨진 컬럼에 저장된 ID를 체크하거나, 입력한 '중개업소' 명칭으로 체크
+                    # 여기서는 가장 확실한 '중개업소 명칭' 중복을 먼저 막겠습니다.
+                    already_reserved = daily_df[user_check_mask & (daily_df["중개업소"] == r_agency)]
+            
+                    if not already_reserved.empty:
+                        st.error(f"🚫 '{r_agency}' 명의로 해당 시간대({t_val})에 이미 예약된 내역이 있습니다. 같은 시간대 중복 예약은 불가능합니다.")
+                    else:
+                        # 3. 중복이 없을 때만 예약 진행
+                        combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
+                        types_str = ", ".join([s["타입"] for s in r_items])
+                        
+                        # 기록할 때 마지막에 접속한 ID(st.session_state.user_id)를 비고란에 살짝 같이 적어두면 나중에 관리하기 더 좋습니다.
+                        final_memo = f"[{st.session_state.user_id}] {memo_input}"
+                        
+                        new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, "", types_str, t_val, final_memo]
+                        target_ws.append_row(new_row)
+                        
+                        st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
 
     with tab2:
         st.subheader("📋 단지별 실시간 예약 현황판")
