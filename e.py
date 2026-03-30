@@ -102,30 +102,69 @@ df_total, user_dict = load_full_data()
 # =========================
 # 🔒 로그인 로직
 # =========================
+# =========================
+# 🔒 로그인 로직 (안전 강화 및 에러 방지)
+# =========================
 if not st.session_state.logged_in:
     st.title("🔒 EMS 로그인")
     with st.form("login"):
-        u_id = st.text_input("ID(아이디)").strip(); u_pw = st.text_input("PW(비밀번호)", type="password").strip()
+        u_id = st.text_input("ID(아이디)").strip()
+        u_pw = st.text_input("PW(비밀번호)", type="password").strip()
         if st.form_submit_button("로그인"):
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                ws_status = sheet.worksheet("접속현황"); all_status = ws_status.get_all_values()
-                target_row = -1; current_db_key = ""
-                for i, r in enumerate(all_status):
-                    if r[0] == u_id: target_row = i + 1; current_db_key = r[1].strip(); break
-                if current_db_key != "" and current_db_key != st.session_state.session_key:
-                    st.error("🔒현재 다른 기기에서 접속 중인 계정입니다. 보안 정책상 중복 접속은 서비스 사용이 제한됩니다."); st.session_state.pending_user = u_id
-                else:
-                    if target_row != -1: ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
-                    else: ws_status.append_row([u_id, st.session_state.session_key, datetime.now().strftime("%H:%M:%S")])
-                    st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
-            else: st.error("❌ 로그인 정보를 확인해주세요.[로그인 계정 문의 : 062-511-9336]")
+                try:
+                    # [핵심 수정] 탭 존재 여부부터 안전하게 체크
+                    ws_status = sheet.worksheet("접속현황")
+                    all_status = ws_status.get_all_values()
+                    
+                    target_row = -1
+                    current_db_key = ""
+                    
+                    for i, r in enumerate(all_status):
+                        if len(r) > 0 and r[0] == u_id:
+                            target_row = i + 1
+                            current_db_key = r[1].strip() if len(r) > 1 else ""
+                            break
+                    
+                    # 중복 접속 체크
+                    if current_db_key != "" and current_db_key != st.session_state.session_key:
+                        st.error("🔒현재 다른 기기에서 접속 중인 계정입니다.")
+                        st.session_state.pending_user = u_id
+                    else:
+                        now_str = datetime.now().strftime("%H:%M:%S")
+                        if target_row != -1:
+                            # [수정] 범위를 정확히 B:C(2열:3열)로 지정하여 업데이트
+                            ws_status.update(f'B{target_row}:C{target_row}', [[st.session_state.session_key, now_str]])
+                        else:
+                            # 새 행 추가
+                            ws_status.append_row([u_id, st.session_state.session_key, now_str])
+                        
+                        st.session_state.logged_in = True
+                        st.session_state.user_id = u_id
+                        st.rerun()
+                except Exception as e:
+                    # 시트에 문제가 생겨도 서비스 운영을 위해 로그인은 통과시킴
+                    st.session_state.logged_in = True
+                    st.session_state.user_id = u_id
+                    st.rerun()
+            else:
+                st.error("❌ 로그인 정보를 확인해주세요.")
+    
+    # 중복 접속 강제 로그아웃 버튼
     if "pending_user" in st.session_state:
-        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속을 종료하고\n현재 기기에서 EMS서비스를 시작합니다."):
-            ws_status = sheet.worksheet("접속현황"); all_status = ws_status.get_all_values()
-            for i, r in enumerate(all_status):
-                if r[0] == st.session_state.pending_user:
-                    ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]]); break
-            st.session_state.logged_in = True; st.session_state.user_id = st.session_state.pending_user; del st.session_state.pending_user; st.rerun()
+        if st.button(f"🔑 '{st.session_state.pending_user}' 님의 기존 접속 종료 후 시작"):
+            try:
+                ws_status = sheet.worksheet("접속현황")
+                all_status = ws_status.get_all_values()
+                for i, r in enumerate(all_status):
+                    if len(r) > 0 and r[0] == st.session_state.pending_user:
+                        ws_status.update(f'B{i+1}:C{i+1}', [[st.session_state.session_key, datetime.now().strftime("%H:%M:%S")]])
+                        break
+            except: pass
+            st.session_state.logged_in = True
+            st.session_state.user_id = st.session_state.pending_user
+            del st.session_state.pending_user
+            st.rerun()
     st.stop()
 
 if not sync_session(st.session_state.user_id, st.session_state.session_key):
