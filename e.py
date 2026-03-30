@@ -326,4 +326,89 @@ elif choice == "📅 세대관람 예약":
                         combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
                         types_str = ", ".join([s["타입"] for s in r_items])
                         final_memo = f"[{st.session_state.user_id}] {memo_input}"
-                        new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, "", types_str, t_val, final_
+                        new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, "", types_str, t_val, final_memo]
+                        target_ws.append_row(new_row)
+                        st.success("✅ 예약 완료!"); time.sleep(1.5); st.cache_data.clear(); st.rerun()
+
+    with tab2:
+        st.subheader("📋 단지별 실시간 예약 현황판")
+        sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
+        view_date = st.date_input("조회 일자", date.today(), key="view_date")
+        try:
+            ws_n = sheet.worksheet(f"{sel_dj_view}_관람예약"); d_n = ws_n.get_all_values()
+            ws_y = sheet.worksheet("야간_관람예약"); d_y = ws_y.get_all_values()
+            df_n = pd.DataFrame(d_n[1:], columns=d_n[0]) if len(d_n) > 1 else pd.DataFrame(columns=COL_NAMES)
+            df_y = pd.DataFrame(d_y[1:], columns=d_y[0]) if len(d_y) > 1 else pd.DataFrame(columns=COL_NAMES)
+            v_all = pd.concat([df_n, df_y], ignore_index=True)
+            
+            if not v_all.empty:
+                v_daily = v_all[v_all["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
+                v_daily['예약시간'] = pd.Categorical(v_daily['예약시간'], categories=TIME_SLOTS, ordered=True)
+                v_daily = v_daily.sort_values('예약시간')
+            else: v_daily = pd.DataFrame()
+
+            rows_to_show = [TIME_SLOTS[i:i + 3] for i in range(0, len(TIME_SLOTS), 3)]
+            for row in rows_to_show:
+                cols = st.columns(3)
+                for idx, slot in enumerate(row):
+                    count = len(v_daily[v_daily["예약시간"] == slot]) if not v_daily.empty else 0
+                    with cols[idx]:
+                        color = "#ff4b4b" if count >= 3 else "#28a745"
+                        bg = "#fff1f1" if count >= 3 else "#f8fff9"
+                        st.markdown(f"""<div class="time-card" style="border: 1px solid {color}; background-color: {bg};">
+                            <p>{slot.split(' ~ ')[0]}</p><strong style="color: {color};">{'❌ 마감' if count>=3 else f'{count}/3 (여유)'}</strong></div>""", unsafe_allow_html=True)
+            st.divider()
+            if not v_daily.empty:
+                v_daily["예약자"] = v_daily["예약자"].apply(lambda n: n[0] + "*" * (len(n)-1) if len(n) > 1 else n)
+                st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동"]].rename(columns={"동":"관람상세"}), use_container_width=True, hide_index=True)
+            else:
+                st.info("해당 날짜에 등록된 예약이 없습니다.")
+        except Exception as e:
+            st.error(f"현황판 로드 오류: {e}")
+
+# =========================
+# ⚙️ [페이지 4] 관리자 모드
+# =========================
+elif choice == "⚙️관리자 모드":
+    st.title("⚙️ 매물 통합 관리")
+    col1, col2, col3 = st.columns(3)
+    edit_dj = col1.selectbox("수정 단지", ["1단지", "2단지", "3단지"])
+    edit_dong = col2.text_input("동 입력")
+    edit_ho = col3.text_input("호수 입력")
+    
+    if edit_dong and edit_ho:
+        target_df = df_total[(df_total["단지"] == edit_dj) & (df_total["동"] == edit_dong) & (df_total["호수"] == edit_ho)]
+        if not target_df.empty:
+            curr = target_df.iloc[0]
+            old_sheet_name = f"{edit_dj}_{curr['거래유형']}"
+            with st.form("edit_form"):
+                st.markdown(f"### 📝 {edit_dong}동 {edit_ho}호 정보 수정")
+                c1, c2, c3 = st.columns(3)
+                options = ["매매", "전세", "월세"]
+                new_gubun = c1.selectbox("매물구분", options, index=options.index(curr["매물구분"]) if curr["매물구분"] in options else 0)
+                new_type = c2.text_input("타입", value=curr["타입"])
+                new_status = c3.selectbox("거래상태", ["관람가능", "거래완료"], index=0 if curr["거래여부"] == "관람가능" else 1)
+                c4, c5, c6 = st.columns(3)
+                new_price_str = c4.text_input("매매가/보증금 (만원)", value=str(int(curr["매매가_num"])))
+                new_monthly_str = c5.text_input("월세 (만원)", value=str(int(curr["월세_num"])))
+                new_note = c6.text_input("비고", value=curr["비고"])
+                
+                if st.form_submit_button("💾 정보 업데이트 및 저장"):
+                    try:
+                        f_price = f"{int(new_price_str.replace(',','')):,}"
+                        f_monthly = f"{int(new_monthly_str.replace(',','')):,}"
+                        new_sheet_name = f"{edit_dj}_{'매매' if new_gubun == '매매' else '임대'}"
+                        ws = sheet.worksheet(old_sheet_name)
+                        rows = ws.get_all_values()
+                        idx = next((i+1 for i, r in enumerate(rows) if len(r)>3 and r[2]==edit_dong and r[3]==edit_ho), -1)
+                        if idx != -1:
+                            new_data = [rows[idx-1][0], rows[idx-1][1], edit_dong, edit_ho, new_type, new_gubun, f_price, f_monthly, new_status, new_note]
+                            if old_sheet_name != new_sheet_name:
+                                sheet.worksheet(new_sheet_name).append_row(new_data)
+                                ws.delete_rows(idx)
+                            else:
+                                ws.update(range_name=f'E{idx}:J{idx}', values=[[new_type, new_gubun, f_price, f_monthly, new_status, new_note]])
+                            st.success("✅ 완료!"); st.cache_data.clear(); st.rerun()
+                    except: st.error("입력값을 확인하세요.")
+        else:
+            st.warning("🔍 매물을 찾을 수 없습니다.")
