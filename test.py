@@ -284,11 +284,11 @@ elif choice == "📅 세대관람 예약":
 # ⚙️ [페이지 4] 관리자 모드
 # =========================
 elif choice == ADMIN_MENU_NAME:
-    st.title("⚙️ 관리자 마스터 모드")
-    adm_tab1, adm_tab2, adm_tab3 = st.tabs(["🏠 거래상태 변경", "📅 통합 예약 조회", "✂️ 데이터 수정/삭제"])
+    st.title("⚙️ 관리자 모드")
+    adm_tab1, adm_tab2, adm_tab3 = st.tabs(["🏠 거래상태 변경", "📅 통합 예약 조회", "✂️ 예약 정보 수정/삭제"])
 
     with adm_tab1:
-        st.subheader("📍 매물 상태 업데이트")
+        st.subheader("🏠 거래상태 변경")
         c1, c2, c3 = st.columns(3)
         a_dj = c1.selectbox("단지", ["1단지", "2단지", "3단지"], key="adm_dj")
         a_dong = c2.text_input("동", key="adm_dong")
