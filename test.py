@@ -331,26 +331,43 @@ elif choice == ADMIN_MENU_NAME:
         col1, col2 = st.columns(2)
         d_date = col1.date_input("날짜", date.today(), key="mod_date")
         d_sheet = col2.selectbox("시트", ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약", "야간_관람예약"], key="mod_sheet")
+        
         try:
             ws_mod = sheet.worksheet(d_sheet); rows_mod = ws_mod.get_all_values()
             if len(rows_mod) > 1:
                 df_mod = pd.DataFrame(rows_mod[1:], columns=rows_mod[0])
+                # 선택한 날짜에 해당하는 데이터 필터링
                 day_mod = df_mod[df_mod["예약날짜"] == d_date.strftime("%Y-%m-%d")]
+                
                 if not day_mod.empty:
-                    sel = st.selectbox("대상", [f"{i+2}행: [{r['예약시간']}] {r['예약자']}" for i, r in day_mod.iterrows()])
-                    row_idx = int(sel.split("행:")[0])
+                    # [변경 요청 사항] 선택 문구를 [시간] 대표자 (중개업소) 형식으로 변경
+                    # 딕셔너리를 사용하여 선택된 텍스트와 원본 행 번호를 매핑
+                    selection_map = {}
+                    options = []
+                    for i, r in day_mod.iterrows():
+                        opt_text = f"[{r['예약시간']}] {r['예약자']} ({r['중개업소']})"
+                        selection_map[opt_text] = i + 2 # 헤더가 1행이므로 실제 행 번호는 index + 2
+                        options.append(opt_text)
+                    
+                    sel_text = st.selectbox("대상 선택", options)
+                    row_idx = selection_map[sel_text]
+                    
                     with st.form("mod_form"):
-                        # 통합된 인덱스 반영: 날짜(0), 성함(1), 업소(2), 세대수(3), 동호수(4), 타입(5), 시간(6), 비고(7)
+                        # 데이터 로드 (시트 인덱스는 0부터 시작하므로 row_idx-1)
                         m_name = st.text_input("성함", value=rows_mod[row_idx-1][1])
                         m_agency = st.text_input("업소", value=rows_mod[row_idx-1][2])
                         m_time = st.selectbox("시간", TIME_SLOTS, index=TIME_SLOTS.index(rows_mod[row_idx-1][6]) if rows_mod[row_idx-1][6] in TIME_SLOTS else 0)
                         
-                        if st.form_submit_button("수정 저장"):
-                            # B: 성함, C: 업소, G: 시간 업데이트
+                        col_btn1, col_btn2 = st.columns(2)
+                        if col_btn1.form_submit_button("💾 수정 저장"):
                             ws_mod.update(f'B{row_idx}:C{row_idx}', [[m_name, m_agency]])
                             ws_mod.update(f'G{row_idx}', [[m_time]])
-                            st.success("수정 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
-                        if st.form_submit_button("🗑️ 삭제", type="primary"):
+                            st.success("정보가 수정되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                            
+                        if col_btn2.form_submit_button("🗑️ 예약 취소(삭제)", type="primary"):
                             ws_mod.delete_rows(row_idx)
-                            st.success("삭제 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
-        except: pass
+                            st.success("예약이 삭제되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                else:
+                    st.warning("해당 날짜에 예약 데이터가 없습니다.")
+        except Exception as e:
+            st.error(f"로드 중 오류 발생: {e}")
