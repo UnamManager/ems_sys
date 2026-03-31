@@ -218,23 +218,52 @@ elif choice == "📅 세대관람 예약":
                 if not match.empty: r_items.append({"동":d_sel, "호수":h_sel, "타입":match.iloc[0]['타입']})
 
         with st.form("reserve_form"):
-            r_name = st.text_input("(📝필수) 예약자 성함[실명]"); r_agency = st.text_input("(📝필수) 중개업소 명칭")
+            r_name = st.text_input("(📝필수) 예약자 성함[실명]")
+            r_agency = st.text_input("(📝필수) 중개업소 명칭")
             memo_input = st.text_area("(선택) 비고 [방문 인원 수 또는 특이사항]")
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
             if submit_btn:
-                if not r_name or not r_agency: st.error("성함과 업소명을 모두 입력해주세요.")
+                if not r_name or not r_agency:
+                    st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
-                    # 야간예약 시에도 단지 정보를 동호수 앞에 포함하여 저장 (필터링용)
-                    combined_info = " / ".join([f"{res_dj} {it['동']}동 {it['호수']}호" for it in r_items])
-                    types_str = ", ".join([s["타입"] for s in r_items])
+                    # --- [중복 예약 방지 로직 시작] ---
+                    # 현재 선택한 날짜/시간에 동일한 이름과 업소가 있는지 검사
+                    is_duplicate = False
+                    if len(all_res) > 1:
+                        # 데이터프레임에서 날짜, 시간, 이름, 업소가 모두 같은 행이 있는지 확인
+                        dup_check = daily_df[
+                            (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & 
+                            (daily_df["예약시간"] == t_val) & 
+                            (daily_df["예약자"] == r_name) & 
+                            (daily_df["중개업소"] == r_agency)
+                        ]
+                        if not dup_check.empty:
+                            is_duplicate = True
                     
-                    # [데이터 저장] 8개 컬럼 구조: 날짜, 성함, 업소, 세대수, 동호수, 타입, 시간, 비고
-                    new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, types_str, t_val, memo_input]
-                    target_ws.append_row(new_row)
+                    if is_duplicate:
+                        st.error(f"🚫 {r_name}님은 이미 해당 시간대에 예약이 되어 있습니다. (중복 예약 불가)")
+                    # --- [중복 예약 방지 로직 끝] ---
                     
-                    send_email_notification(f"예약자: {r_name}\n업소: {r_agency}\n단지: {res_dj}\n세대: {combined_info}\n시간: {t_val}")
-                    st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1); st.cache_data.clear(); st.rerun()
+                    else:
+                        # 중복이 아닐 경우에만 저장 실행
+                        combined_info = " / ".join([f"{res_dj} {it['동']}동 {it['호수']}호" for it in r_items])
+                        types_str = ", ".join([s["타입"] for s in r_items])
+                        
+                        new_row = [
+                            r_date_val.strftime("%Y-%m-%d"), 
+                            r_name, 
+                            r_agency, 
+                            f"{len(r_items)}세대", 
+                            combined_info, 
+                            types_str, 
+                            t_val, 
+                            memo_input
+                        ]
+                        target_ws.append_row(new_row)
+                        
+                        send_email_notification(f"예약자: {r_name}\n업소: {r_agency}\n단지: {res_dj}\n세대: {combined_info}\n시간: {t_val}")
+                        st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1); st.cache_data.clear(); st.rerun()
 
     with tab2:
         st.subheader("📋 단지별 예약 현황")
