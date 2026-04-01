@@ -31,7 +31,7 @@ if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 if "user_id" not in st.session_state: st.session_state["user_id"] = ""
 if "auth_manage" not in st.session_state: st.session_state["auth_manage"] = False
 
-ADMIN_PASSWORD_MANAGE = "ua0952"
+ADMIN_PASSWORD_MANAGE = "3214"
 TIME_SLOTS = ["10:00 ~ 10:45", "11:00 ~ 11:45", "13:00 ~ 13:45", "14:00 ~ 14:45", "15:00 ~ 15:45", "16:00 ~ 16:45", "17:00 ~ 17:45"]
 COL_NAMES = ["예약날짜", "예약자", "중개업소", "관람세대수", "동호수", "타입", "예약시간", "비고"]
 
