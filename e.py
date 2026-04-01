@@ -128,7 +128,7 @@ with st.sidebar:
     if st.button("🔒 로그아웃"):
         st.session_state.clear(); st.rerun()
 
-def apply_style(df):
+    def apply_style(df):
     try:
         return df.style.map(lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "", subset=["거래여부"])
     except AttributeError:
