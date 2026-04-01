@@ -26,13 +26,12 @@ st.markdown("""
 # =========================
 # 🔑 세션 및 환경 설정
 # =========================
-if "session_key" not in st.session_state: st.session_key = str(uuid.uuid4())
+if "session_key" not in st.session_state: st.session_state["session_key"] = str(uuid.uuid4())
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 if "user_id" not in st.session_state: st.session_state["user_id"] = ""
 if "auth_manage" not in st.session_state: st.session_state["auth_manage"] = False
 
 ADMIN_PASSWORD_MANAGE = "ua0952"
-# 모든 시간대를 하나로 통합
 TIME_SLOTS = ["10:00 ~ 10:45", "11:00 ~ 11:45", "13:00 ~ 13:45", "14:00 ~ 14:45", "15:00 ~ 15:45", "16:00 ~ 16:45", "17:00 ~ 17:45"]
 COL_NAMES = ["예약날짜", "예약자", "중개업소", "관람세대수", "동호수", "타입", "예약시간", "비고"]
 
@@ -89,6 +88,15 @@ def load_full_data():
 df_total, user_dict = load_full_data()
 
 # =========================
+# 🎨 스타일 함수 (최신/구버전 판다스 모두 지원)
+# =========================
+def apply_style(df):
+    try:
+        return df.style.map(lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "", subset=["거래여부"])
+    except:
+        return df.style.applymap(lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "", subset=["거래여부"])
+
+# =========================
 # 🔒 로그인 시스템
 # =========================
 if not st.session_state.logged_in:
@@ -127,11 +135,6 @@ with st.sidebar:
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
     if st.button("🔒 로그아웃"):
         st.session_state.clear(); st.rerun()
-
-    def apply_style(df):
-        try:
-            return df.style.map(lambda x: "background-color: #d4edda" if x == "관람가능" else "background-color: #f8d7da" if x == "거래완료" else "", subset=["거래여부"])
-        except AttributeError:
 
 # =========================
 # 📊 [페이지 1] 실시간 현황
@@ -187,15 +190,11 @@ elif choice == "📅 세대관람 예약":
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
         r_date_val = st.date_input("방문 날짜 선택", date.today())
         t_val = st.selectbox("관람 시간 선택", TIME_SLOTS)
-        
-        # [수정] 야간 시트 구분 없이 선택한 단지 시트로 바로 연결
         target_sheet_name = f"{res_dj}_관람예약"
         
         try:
             target_ws = sheet.worksheet(target_sheet_name); all_res = target_ws.get_all_values()
             daily_df = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=COL_NAMES)
-            
-            # 해당 날짜/시간 인원 파악
             mask = (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)
             current_res_count = len(daily_df[mask])
             
@@ -225,12 +224,10 @@ elif choice == "📅 세대관람 예약":
             if submit_btn:
                 if not r_name or not r_agency: st.error("성함과 업소명을 모두 입력해주세요.")
                 elif can_reserve:
-                    # [중복 예약 방지] 동일 시간대 1인 1예약 체크
                     is_duplicate = not daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & 
                                                 (daily_df["예약시간"] == t_val) & 
                                                 (daily_df["예약자"] == r_name) & 
                                                 (daily_df["중개업소"] == r_agency)].empty
-                    
                     if is_duplicate:
                         st.error(f"🚫 {r_name}님은 이미 해당 시간대에 예약 기록이 있습니다.")
                     else:
@@ -246,28 +243,15 @@ elif choice == "📅 세대관람 예약":
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
         view_date = st.date_input("조회 일자", date.today(), key="view_date")
         try:
-            # [수정] 야간 시트 합칠 필요 없이 해당 단지 시트만 읽으면 끝!
             ws_view = sheet.worksheet(f"{sel_dj_view}_관람예약"); d_view = ws_view.get_all_values()
             df_view = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=COL_NAMES)
-            
             if not df_view.empty:
                 v_daily = df_view[df_view["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
                 v_daily['예약시간'] = pd.Categorical(v_daily['예약시간'], categories=TIME_SLOTS, ordered=True)
                 v_daily = v_daily.sort_values('예약시간')
-                
-                # 시각화 (상단 요약 카드)
-                cols = st.columns(len(TIME_SLOTS))
-                for idx, slot in enumerate(TIME_SLOTS):
-                    count = len(v_daily[v_daily["예약시간"] == slot])
-                    with cols[idx if idx < len(cols) else 0]:
-                        color = "#ff4b4b" if count >= 3 else "#28a745"
-                        st.markdown(f"""<div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px;">
-                                    <small>{slot.split('~')[0]}</small><br><b style="color:{color}">{count}/3</b></div>""", unsafe_allow_html=True)
-                
-                st.divider()
                 st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), use_container_width=True, hide_index=True)
             else: st.info("등록된 예약이 없습니다.")
-        except: st.error("시트를 찾을 수 없습니다.")
+        except: st.error("데이터 로드 실패")
 
 # =========================
 # ⚙️ [페이지 4] 관리자 모드
@@ -319,13 +303,11 @@ elif choice == ADMIN_MENU_NAME:
         col1, col2 = st.columns(2)
         d_date = col1.date_input("날짜", date.today(), key="mod_date")
         d_sheet = col2.selectbox("시트 선택", ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"], key="mod_sheet")
-        
         try:
             ws_mod = sheet.worksheet(d_sheet); rows_mod = ws_mod.get_all_values()
             if len(rows_mod) > 1:
                 df_mod = pd.DataFrame(rows_mod[1:], columns=rows_mod[0])
                 day_mod = df_mod[df_mod["예약날짜"] == d_date.strftime("%Y-%m-%d")]
-                
                 if not day_mod.empty:
                     selection_map = {}
                     options = []
@@ -333,15 +315,12 @@ elif choice == ADMIN_MENU_NAME:
                         opt_text = f"[{r['예약시간']}] {r['예약자']} ({r['중개업소']})"
                         selection_map[opt_text] = i + 2
                         options.append(opt_text)
-                    
                     sel_text = st.selectbox("대상 선택", options)
                     row_idx = selection_map[sel_text]
-                    
                     with st.form("mod_form"):
                         m_name = st.text_input("성함", value=rows_mod[row_idx-1][1])
                         m_agency = st.text_input("업소", value=rows_mod[row_idx-1][2])
                         m_time = st.selectbox("시간", TIME_SLOTS, index=TIME_SLOTS.index(rows_mod[row_idx-1][6]) if rows_mod[row_idx-1][6] in TIME_SLOTS else 0)
-                        
                         c_b1, c_b2 = st.columns(2)
                         if c_b1.form_submit_button("💾 수정 저장"):
                             ws_mod.update(f'B{row_idx}:C{row_idx}', [[m_name, m_agency]])
@@ -350,5 +329,4 @@ elif choice == ADMIN_MENU_NAME:
                         if c_b2.form_submit_button("🗑️ 예약 취소", type="primary"):
                             ws_mod.delete_rows(row_idx)
                             st.success("삭제 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
-                else: st.warning("해당 날짜에 데이터가 없습니다.")
-        except: pass
+        except: st.error("데이터 로드 실패")
