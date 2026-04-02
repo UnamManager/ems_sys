@@ -247,8 +247,36 @@ elif choice == "📅 세대관람 예약":
             df_view = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=COL_NAMES)
             if not df_view.empty:
                 v_daily = df_view[df_view["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
+                
+                # --- [추가 1] 상단 시간대별 잔여석 상태 카드 표시 ---
+                cols = st.columns(len(TIME_SLOTS))
+                for idx, slot in enumerate(TIME_SLOTS):
+                    count = len(v_daily[v_daily["예약시간"] == slot])
+                    with cols[idx]:
+                        if count >= 3:
+                            color = "#ff4b4b" # 빨간색
+                            label = "마감"
+                        else:
+                            color = "#28a745" # 초록색
+                            label = f"{3-count}석 가능"
+                        st.markdown(f"""
+                            <div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px; margin-bottom:10px;">
+                                <small style="font-size:0.7rem;">{slot.split('~')[0]}</small><br>
+                                <b style="color:{color}; font-size:0.85rem;">{label}</b>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
+                # --- [추가 2] 예약자 성함 마스킹 처리 ---
+                def mask_name(name):
+                    if len(name) <= 1: return "*"
+                    return name[0] + "*" * (len(name)-1)
+                
+                v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
+                
+                # 기존 정렬 및 출력 로직 유지
                 v_daily['예약시간'] = pd.Categorical(v_daily['예약시간'], categories=TIME_SLOTS, ordered=True)
                 v_daily = v_daily.sort_values('예약시간')
+                st.divider()
                 st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), use_container_width=True, hide_index=True)
             else: st.info("등록된 예약이 없습니다.")
         except: st.error("데이터 로드 실패")
