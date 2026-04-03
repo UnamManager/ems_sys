@@ -294,7 +294,7 @@ elif choice == "📅 세대관람 예약":
                     u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
                     d_sel = col1.selectbox(f"동 ({i+1})", u_dongs, key=f"d_r_{i}")
                     u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                    h_sel = col2.selectbox(f"호수 ({i+1})", u_hos, key=f"h_r_{i}")
+                    h_sel = col2.selectbox(f"호수 ({i+1})", u_hos, key=f"h_r_{i}") # f-string 적용
                     match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
                     if not match.empty: 
                         r_items.append({"동":d_sel, "호수":h_sel, "타입":match.iloc[0]['타입']})
