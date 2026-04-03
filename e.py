@@ -438,7 +438,7 @@ elif choice == "📅 세대관람 예약":
 # =========================
 elif choice == ADMIN_MENU_NAME:
     st.title("⚙️ 관리자 마스터 모드")
-    adm_tab1, adm_tab2, adm_tab3 = st.tabs(["🏠 거래상태 변경", "📅 통합 예약 조회", "✂️ 데이터 수정/삭제"])
+    adm_tab1, adm_tab2, adm_tab3 = st.tabs(["🏠 거래상태 변경", "📅 통합 예약 조회", "✂️ 예약 데이터 수정/삭제"])
 
     with adm_tab1:
         st.subheader("📍 매물 상태 업데이트")
@@ -482,7 +482,7 @@ elif choice == ADMIN_MENU_NAME:
         st.subheader("✂️ 예약 정보 수정/삭제")
         col1, col2 = st.columns(2)
         d_date = col1.date_input("날짜", date.today(), key="mod_date")
-        d_sheet = col2.selectbox("시트 선택", ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"], key="mod_sheet")
+        d_sheet = col2.selectbox("단지 선택", ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"], key="mod_sheet")
         try:
             ws_mod = sheet.worksheet(d_sheet); rows_mod = ws_mod.get_all_values()
             if len(rows_mod) > 1:
@@ -495,7 +495,7 @@ elif choice == ADMIN_MENU_NAME:
                         opt_text = f"[{r['예약시간']}] {r['예약자']} ({r['중개업소']})"
                         selection_map[opt_text] = i + 2
                         options.append(opt_text)
-                    sel_text = st.selectbox("대상 선택", options)
+                    sel_text = st.selectbox("변경할 예약 건", options)
                     row_idx = selection_map[sel_text]
                     with st.form("mod_form"):
                         st.info(f"대상: {rows_mod[row_idx-1][1]} ({rows_mod[row_idx-1][2]})")
