@@ -191,18 +191,39 @@ elif choice == "📅 세대관람 예약":
         r_date_val = st.date_input("방문 날짜 선택", date.today())
         t_val = st.selectbox("관람 시간 선택", TIME_SLOTS)
         target_sheet_name = f"{res_dj}_관람예약"
-        
         try:
-            target_ws = sheet.worksheet(target_sheet_name); all_res = target_ws.get_all_values()
+            target_ws = sheet.worksheet(target_sheet_name)
+            all_res = target_ws.get_all_values()
+            
+            # 데이터 로드 및 현재 예약 인원 파악
             daily_df = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=COL_NAMES)
             mask = (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)
             current_res_count = len(daily_df[mask])
             
+            # --- [재민 추가: 당일 15시 마감 및 인원 체크 로직] ---
+            now = datetime.now()
+            is_today = (r_date_val == date.today()) # 선택한 날짜가 오늘인지 확인
+            
+            # 1. 인원 마감 체크 (3명)
             if current_res_count >= 3:
-                st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)"); can_reserve = False
+                st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)")
+                can_reserve = False
+            
+            # 2. 당일 15시 마감 체크 (추가된 기능)
+            elif is_today and now.hour >= 15:
+                st.error("⏰ 당일 예약은 오후 3시(15:00)까지만 확정 가능합니다. 내일 이후 날짜를 선택해주세요.")
+                can_reserve = False
+            
+            # 3. 예약 가능 상태
             else:
-                st.info(f"✅ 현재 {3 - current_res_count}자리 예약 가능합니다. (현재 {current_res_count}/3)"); st.progress(current_res_count / 3); can_reserve = True
-        except: st.error("시트 연결 오류"); can_reserve = False
+                st.info(f"✅ 현재 {3 - current_res_count}자리 예약 가능합니다. (현재 {current_res_count}/3)")
+                st.progress(current_res_count / 3)
+                can_reserve = True
+            # -----------------------------------------------
+
+        except Exception as e:
+            st.error(f"시트 연결 오류: {e}")
+            can_reserve = False
 
         st.divider(); f_unit = df_total[df_total["단지"] == res_dj]; r_count = st.selectbox("관람 세대수", [1, 2])
         r_items = []
