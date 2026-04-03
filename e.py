@@ -109,6 +109,24 @@ def load_full_data():
 
 df_total, user_dict = load_full_data()
 
+@st.cache_data(ttl=60)  # 예약 정보는 1분 동안 메모리에 저장
+def load_all_reservations():
+    all_res_data = {}
+    res_sheets = ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"]
+    for s_name in res_sheets:
+        try:
+            ws = sheet.worksheet(s_name)
+            data = ws.get_all_values()
+            if len(data) > 1:
+                all_res_data[s_name] = pd.DataFrame(data[1:], columns=data[0])
+            else:
+                all_res_data[s_name] = pd.DataFrame(columns=COL_NAMES + ["등록ID"])
+        except:
+            all_res_data[s_name] = pd.DataFrame(columns=COL_NAMES + ["등록ID"])
+    return all_res_data
+
+# 함수 정의 후 바로 실행해서 변수에 담아둡니다
+res_dfs = load_all_reservations()
 # =========================
 # 🎨 스타일 함수 (최신/구버전 판다스 모두 지원)
 # =========================
