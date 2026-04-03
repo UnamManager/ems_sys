@@ -246,8 +246,9 @@ elif choice == "📅 세대관람 예약":
         can_reserve = True # 초기값
         
         try:
-            target_ws = sheet.worksheet(target_sheet_name)
-            all_res = target_ws.get_all_values()
+            target_ws = sheet.worksheet(target_sheet_name) 
+            # ✅ 아래와 같이 수정 (API 호출 대신 이미 로드된 res_dfs 사용)
+            daily_df = res_dfs.get(target_sheet_name, pd.DataFrame(columns=COL_NAMES + ["등록ID"]))
             daily_df = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=COL_NAMES + ["등록ID"])
             
             # --- [체크 로직 1: 당일 15시 마감] ---
@@ -496,9 +497,13 @@ elif choice == ADMIN_MENU_NAME:
         adm_date = st.date_input("날짜 선택", date.today(), key="adm_date_view")
         if st.button("전체 단지 예약 불러오기"):
             all_master = []
-            for s in ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"]:
-                try:
-                    data = sheet.worksheet(s).get_all_values()
+            if st.button("전체 단지 예약 불러오기"):
+                all_master = []
+                for s_name in ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"]:
+                    tmp = res_dfs.get(s_name, pd.DataFrame()).copy() # ✅ 이미 캐시된 데이터 사용
+                    if not tmp.empty:
+                        tmp["단지"] = s_name.split("_")[0]
+                        all_master.append(tmp)
                     if len(data) > 1:
                         tmp = pd.DataFrame(data[1:], columns=data[0])
                         tmp["단지"] = s.split("_")[0]
