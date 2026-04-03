@@ -333,14 +333,13 @@ elif choice == "📅 세대관람 예약":
     with tab2:
         st.subheader("📋 단지별 예약 현황")
         
-        # [수정] 위젯 간 충돌 방지를 위해 key값을 명확히 부여하고, 중복된 selectbox는 제거했습니다.
         sel_dj_view = st.radio("조회 단지 선택", ["1단지", "2단지", "3단지"], horizontal=True, key="view_danji_radio")
         view_date = st.date_input("조회 일자", date.today(), key="view_date_picker")
         
         try:
-            # 선택한 단지의 시트 가져오기
-            df_view = res_dfs.get(f"{sel_dj_view}_관람예약", pd.DataFrame())
-            df_view = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=COL_NAMES)
+            # 💡 [수정 포인트] 직접 시트를 읽지 않고, 캐싱된 res_dfs에서 꺼내옵니다.
+            target_key = f"{sel_dj_view}_관람예약"
+            df_view = res_dfs.get(target_key, pd.DataFrame(columns=COL_NAMES + ["등록ID"]))
             
             if not df_view.empty:
                 # 선택한 날짜 데이터만 필터링
@@ -377,13 +376,15 @@ elif choice == "📅 세대관람 예약":
                 v_daily = v_daily.sort_values('예약시간')
                 
                 st.divider()
-                # 테이블 출력 (컬럼명 변경 포함)
+                # 테이블 출력
                 st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), 
                              use_container_width=True, hide_index=True)
             else:
                 st.info(f"📅 {sel_dj_view}에 등록된 예약 데이터가 없습니다.")
         except Exception as e:
-            st.error(f"데이터 로드 실패: {e}")
+            st.error(f"현황 로드 중 오류 발생: {e}")
+    
+
     with tab3:
         st.subheader("👤 내가 등록한 예약 수정/취소")
         my_dj = st.selectbox("수정할 예약의 단지 선택", ["1단지", "2단지", "3단지"], key="my_mod_dj")
