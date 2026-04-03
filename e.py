@@ -253,14 +253,11 @@ elif choice == "📅 세대관람 예약":
             user_dup_found = False
             if can_reserve:
                 for s_name in ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"]:
-                    tmp_ws = sheet.worksheet(s_name)
-                    tmp_data = tmp_ws.get_all_values()
-                    if len(tmp_data) > 1:
-                        tmp_df = pd.DataFrame(tmp_data[1:], columns=tmp_data[0])
-                        # '등록ID'는 시트의 마지막 열(9번째)에 저장되어 있음
+                    tmp_df = res_dfs.get(s_name, pd.DataFrame()) # ✅ 이미 로드된 데이터 사용 (API 호출 0번)
+                    if not tmp_df.empty:
                         dup_mask = (tmp_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & \
                                    (tmp_df["예약시간"] == t_val) & \
-                                   (tmp_df.iloc[:, 8] == st.session_state.user_id) # 9번째 열이 등록 ID
+                                   (tmp_df.iloc[:, 8] == st.session_state.user_id)
                         if not tmp_df[dup_mask].empty:
                             user_dup_found = True
                             break
@@ -324,9 +321,7 @@ elif choice == "📅 세대관람 예약":
         
         try:
             # 선택한 단지의 시트 가져오기
-            ws_view = sheet.worksheet(f"{sel_dj_view}_관람예약")
-            d_view = ws_view.get_all_values()
-            
+            df_view = res_dfs.get(f"{sel_dj_view}_관람예약", pd.DataFrame())
             df_view = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=COL_NAMES)
             
             if not df_view.empty:
