@@ -495,24 +495,33 @@ elif choice == ADMIN_MENU_NAME:
 
     with adm_tab2:
         adm_date = st.date_input("날짜 선택", date.today(), key="adm_date_view")
+        
         if st.button("전체 단지 예약 불러오기"):
             all_master = []
-            if st.button("전체 단지 예약 불러오기"):
-                all_master = []
-                for s_name in ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"]:
-                    tmp = res_dfs.get(s_name, pd.DataFrame()).copy() # ✅ 이미 캐시된 데이터 사용
-                    if not tmp.empty:
-                        tmp["단지"] = s_name.split("_")[0]
-                        all_master.append(tmp)
-                    if len(data) > 1:
-                        tmp = pd.DataFrame(data[1:], columns=data[0])
-                        tmp["단지"] = s.split("_")[0]
-                        all_master.append(tmp)
-                except: continue
+            # ✅ 직접 API를 호출(sheet.worksheet)하지 않고 res_dfs(캐시)에서 가져옵니다.
+            for s_name in ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"]:
+                tmp_df = res_dfs.get(s_name, pd.DataFrame()).copy()
+                
+                if not tmp_df.empty:
+                    # 단지 정보 컬럼 추가
+                    tmp_df["단지"] = s_name.split("_")[0]
+                    all_master.append(tmp_df)
+            
             if all_master:
-                res_df = pd.concat(all_master)
-                st.dataframe(res_df[res_df["예약날짜"] == adm_date.strftime("%Y-%m-%d")].sort_values(["단지", "예약시간"]), use_container_width=True, hide_index=True)
-
+                # 데이터 통합
+                res_df = pd.concat(all_master, ignore_index=True)
+                
+                # 날짜 필터링 및 정렬
+                target_date_str = adm_date.strftime("%Y-%m-%d")
+                filtered_df = res_df[res_df["예약날짜"] == target_date_str].copy()
+                
+                if not filtered_df.empty:
+                    filtered_df = filtered_df.sort_values(["단지", "예약시간"])
+                    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"📅 {target_date_str}에 등록된 예약이 없습니다.")
+            else:
+                st.warning("조회된 예약 데이터가 없습니다.")
     with adm_tab3:
         st.subheader("✂️ 예약 정보 수정/삭제")
         col1, col2 = st.columns(2)
