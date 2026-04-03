@@ -271,26 +271,33 @@ elif choice == "📅 세대관람 예약":
                         st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1); st.cache_data.clear(); st.rerun()
 
     with tab2:
-        res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
-        st.subheader("📅 단지별 예약 현황")
-        sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
-        view_date = st.date_input("조회 일자", date.today(), key="view_date")
+        st.subheader("📋 단지별 예약 현황")
+        
+        # [수정] 위젯 간 충돌 방지를 위해 key값을 명확히 부여하고, 중복된 selectbox는 제거했습니다.
+        sel_dj_view = st.radio("조회 단지 선택", ["1단지", "2단지", "3단지"], horizontal=True, key="view_danji_radio")
+        view_date = st.date_input("조회 일자", date.today(), key="view_date_picker")
+        
         try:
-            ws_view = sheet.worksheet(f"{sel_dj_view}_관람예약"); d_view = ws_view.get_all_values()
+            # 선택한 단지의 시트 가져오기
+            ws_view = sheet.worksheet(f"{sel_dj_view}_관람예약")
+            d_view = ws_view.get_all_values()
+            
             df_view = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=COL_NAMES)
+            
             if not df_view.empty:
+                # 선택한 날짜 데이터만 필터링
                 v_daily = df_view[df_view["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
                 
-                # --- [추가 1] 상단 시간대별 잔여석 상태 카드 표시 ---
+                # --- [1] 상단 시간대별 잔여석 상태 카드 표시 ---
                 cols = st.columns(len(TIME_SLOTS))
                 for idx, slot in enumerate(TIME_SLOTS):
                     count = len(v_daily[v_daily["예약시간"] == slot])
                     with cols[idx]:
                         if count >= 3:
-                            color = "#ff4b4b" # 빨간색
+                            color = "#ff4b4b" # 마감 (레드)
                             label = "마감"
                         else:
-                            color = "#28a745" # 초록색
+                            color = "#28a745" # 가능 (그린)
                             label = f"{3-count}석 가능"
                         st.markdown(f"""
                             <div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px; margin-bottom:10px;">
@@ -299,20 +306,26 @@ elif choice == "📅 세대관람 예약":
                             </div>
                             """, unsafe_allow_html=True)
                 
-                # --- [추가 2] 예약자 성함 마스킹 처리 ---
+                # --- [2] 예약자 성함 마스킹 처리 ---
                 def mask_name(name):
-                    if len(name) <= 1: return "*"
+                    if not name or len(name) <= 1: return "*"
                     return name[0] + "*" * (len(name)-1)
                 
-                v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
+                if "예약자" in v_daily.columns:
+                    v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
                 
-                # 기존 정렬 및 출력 로직 유지
+                # 정렬 및 출력
                 v_daily['예약시간'] = pd.Categorical(v_daily['예약시간'], categories=TIME_SLOTS, ordered=True)
                 v_daily = v_daily.sort_values('예약시간')
+                
                 st.divider()
-                st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), use_container_width=True, hide_index=True)
-            else: st.info("등록된 예약이 없습니다.")
-        except: st.error("데이터 로드 실패")
+                # 테이블 출력 (컬럼명 변경 포함)
+                st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), 
+                             use_container_width=True, hide_index=True)
+            else:
+                st.info(f"📅 {sel_dj_view}에 등록된 예약 데이터가 없습니다.")
+        except Exception as e:
+            st.error(f"데이터 로드 실패: {e}")
 
 # =========================
 # ⚙️ [페이지 4] 관리자 모드
