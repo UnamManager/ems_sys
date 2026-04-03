@@ -316,23 +316,30 @@ elif choice == "📅 세대관람 예약":
 
     with tab2:
         st.subheader("📋 단지별 예약 현황")
+        
         sel_dj_view = st.radio("조회 단지 선택", ["1단지", "2단지", "3단지"], horizontal=True, key="view_danji_radio")
         view_date = st.date_input("조회 일자", date.today(), key="view_date_picker")
         
         try:
+            # 💡 [수정 포인트] 직접 시트를 읽지 않고, 캐싱된 res_dfs에서 꺼내옵니다.
             target_key = f"{sel_dj_view}_관람예약"
             df_view = res_dfs.get(target_key, pd.DataFrame(columns=COL_NAMES + ["등록ID"]))
             
             if not df_view.empty:
+                # 선택한 날짜 데이터만 필터링
                 v_daily = df_view[df_view["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
+                
+                # --- [1] 상단 시간대별 잔여석 상태 카드 표시 ---
                 cols = st.columns(len(TIME_SLOTS))
                 for idx, slot in enumerate(TIME_SLOTS):
                     count = len(v_daily[v_daily["예약시간"] == slot])
                     with cols[idx]:
                         if count >= 3:
-                            color = "#ff4b4b"; label = "마감"
+                            color = "#ff4b4b" # 마감 (레드)
+                            label = "마감"
                         else:
-                            color = "#28a745"; label = f"{3-count}석 가능"
+                            color = "#28a745" # 가능 (그린)
+                            label = f"{3-count}석 가능"
                         st.markdown(f"""
                             <div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px; margin-bottom:10px;">
                                 <small style="font-size:0.7rem;">{slot.split('~')[0]}</small><br>
@@ -340,20 +347,26 @@ elif choice == "📅 세대관람 예약":
                             </div>
                             """, unsafe_allow_html=True)
                 
+                # --- [2] 예약자 성함 마스킹 처리 ---
                 def mask_name(name):
                     if not name or len(name) <= 1: return "*"
                     return name[0] + "*" * (len(name)-1)
                 
-                if "예약자" in v_daily.columns: v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
+                if "예약자" in v_daily.columns:
+                    v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
+                
+                # 정렬 및 출력
                 v_daily['예약시간'] = pd.Categorical(v_daily['예약시간'], categories=TIME_SLOTS, ordered=True)
                 v_daily = v_daily.sort_values('예약시간')
+                
                 st.divider()
-                st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), use_container_width=True, hide_index=True)
+                # 테이블 출력
+                st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), 
+                             use_container_width=True, hide_index=True)
             else:
                 st.info(f"📅 {sel_dj_view}에 등록된 예약 데이터가 없습니다.")
         except Exception as e:
             st.error(f"현황 로드 중 오류 발생: {e}")
-
     with tab3:
         st.subheader("👤 내가 등록한 예약 수정/취소")
         my_dj = st.selectbox("수정할 예약의 단지 선택", ["1단지", "2단지", "3단지"], key="my_mod_dj")
