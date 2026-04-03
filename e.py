@@ -198,9 +198,7 @@ elif choice == "📅 세대관람 예약":
             </div>
         """, unsafe_allow_html=True)
         # ----------------------------------------
-
-        res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
-        res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
+        res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"], key="reserve_danji_select")
         r_date_val = st.date_input("방문 날짜 선택", date.today())
         t_val = st.selectbox("관람 시간 선택", TIME_SLOTS)
         target_sheet_name = f"{res_dj}_관람예약"
@@ -394,7 +392,8 @@ elif choice == ADMIN_MENU_NAME:
                         u_dongs_mod = sorted(f_unit_mod["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
                         
                         m_count = st.selectbox("🏠 관람 세대수 변경", [1, 2], 
-                                             index=0 if rows_mod[row_idx-1][3] == "1세대" else 1)
+                             index=0 if rows_mod[row_idx-1][3] == "1세대" else 1,
+                             key=f"admin_mod_count_{row_idx}") # row_idx를 활용해 고유키 생성
                         
                         new_r_items = []
                         # 기존에 저장된 동호수 파싱 (예: "101동 101호 / 102동 202호")
