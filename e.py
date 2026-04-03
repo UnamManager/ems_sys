@@ -273,18 +273,6 @@ elif choice == "📅 세대관람 예약":
                         st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1); st.cache_data.clear(); st.rerun()
 
     with tab2:
-        # --- [추가: 당일 예약 안내 디자인 섹션] ---
-        st.markdown("""
-            <div style="background-color: #fff3cd; padding: 15px; border-radius: 10px; border-left: 5px solid #ffc107; margin-bottom: 20px;">
-                <h4 style="margin: 0; color: #856404;">⚠️ 예약 안내 수칙</h4>
-                <p style="margin: 5px 0 0 0; font-size: 0.95rem; color: #856404;">
-                    • <b>당일 관람 예약</b>은 <b>오후 3시(15:00)</b>까지만 확정 가능합니다.<br>
-                    • 오후 3시 이후에는 익일(내일) 이후 날짜로만 예약이 가능하오니 참고 바랍니다.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        # ----------------------------------------
-
         res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"])
         st.subheader("📅 단지별 예약 현황")
         sel_dj_view = st.radio("조회 단지", ["1단지", "2단지", "3단지"], horizontal=True)
