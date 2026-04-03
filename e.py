@@ -346,15 +346,54 @@ elif choice == ADMIN_MENU_NAME:
                     sel_text = st.selectbox("대상 선택", options)
                     row_idx = selection_map[sel_text]
                     with st.form("mod_form"):
-                        m_name = st.text_input("성함", value=rows_mod[row_idx-1][1])
-                        m_agency = st.text_input("업소", value=rows_mod[row_idx-1][2])
-                        m_time = st.selectbox("시간", TIME_SLOTS, index=TIME_SLOTS.index(rows_mod[row_idx-1][6]) if rows_mod[row_idx-1][6] in TIME_SLOTS else 0)
+                        st.info(f"대상: {rows_mod[row_idx-1][1]} ({rows_mod[row_idx-1][2]})")
+                        
+                        # 1. 시간 수정
+                        m_time = st.selectbox("🕒 관람시간 변경", TIME_SLOTS, 
+                                            index=TIME_SLOTS.index(rows_mod[row_idx-1][6]) if rows_mod[row_idx-1][6] in TIME_SLOTS else 0)
+                        
+                        # 2. 관람 세대수 및 동호수 수정
+                        # 현재 선택된 단지의 매물 정보를 가져와서 셀렉트박스 구성
+                        mod_dj_name = d_sheet.split("_")[0] # "1단지" 등 추출
+                        f_unit_mod = df_total[df_total["단지"] == mod_dj_name]
+                        u_dongs_mod = sorted(f_unit_mod["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                        
+                        m_count = st.selectbox("🏠 관람 세대수 변경", [1, 2], 
+                                             index=0 if rows_mod[row_idx-1][3] == "1세대" else 1)
+                        
+                        new_r_items = []
+                        # 기존에 저장된 동호수 파싱 (예: "101동 101호 / 102동 202호")
+                        existing_units = rows_mod[row_idx-1][4].split(" / ")
+                        
+                        for i in range(m_count):
+                            col1, col2 = st.columns(2)
+                            # 기존 값이 있으면 기본값으로 세팅, 없으면 첫번째 값
+                            default_dong = existing_units[i].split("동")[0].strip() if i < len(existing_units) else u_dongs_mod[0]
+                            m_dong = col1.selectbox(f"동 ({i+1})", u_dongs_mod, index=u_dongs_mod.index(default_dong) if default_dong in u_dongs_mod else 0, key=f"mod_d_{i}")
+                            
+                            u_hos_mod = sorted(f_unit_mod[f_unit_mod["동"]==m_dong]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                            
+                            default_ho = existing_units[i].split("동")[1].replace("호","").strip() if i < len(existing_units) else u_hos_mod[0]
+                            m_ho = col2.selectbox(f"호수 ({i+1})", u_hos_mod, index=u_hos_mod.index(default_ho) if default_ho in u_hos_mod else 0, key=f"mod_h_{i}")
+                            
+                            match_mod = f_unit_mod[(f_unit_mod["동"]==m_dong) & (f_unit_mod["호수"]==m_ho)]
+                            if not match_mod.empty:
+                                new_r_items.append({"동": m_dong, "호수": m_ho, "타입": match_mod.iloc[0]['타입']})
+
+                        st.divider()
                         c_b1, c_b2 = st.columns(2)
-                        if c_b1.form_submit_button("💾 수정 저장"):
-                            ws_mod.update(f'B{row_idx}:C{row_idx}', [[m_name, m_agency]])
-                            ws_mod.update(f'G{row_idx}', [[m_time]])
-                            st.success("수정 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
-                        if c_b2.form_submit_button("🗑️ 예약 취소", type="primary"):
+                        
+                        if c_b1.form_submit_button("💾 수정사항 저장"):
+                            # 새로운 데이터 문자열 생성
+                            new_combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in new_r_items])
+                            new_types_str = ", ".join([s["타입"] for s in new_r_items])
+                            
+                            # 시트 업데이트 (E:관람세대수, E:동호수, F:타입, G:예약시간)
+                            ws_mod.update(f'D{row_idx}:G{row_idx}', [[f"{m_count}세대", new_combined_info, new_types_str, m_time]])
+                            
+                            st.success("✅ 예약 정보가 수정되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                            
+                        if c_b2.form_submit_button("🗑️ 예약 취소(삭제)", type="primary"):
                             ws_mod.delete_rows(row_idx)
-                            st.success("삭제 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                            st.success("🗑️ 삭제 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
         except: st.error("데이터 로드 실패")
