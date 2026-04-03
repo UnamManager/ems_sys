@@ -61,26 +61,28 @@ def get_ems_sheet():
 sheet = get_ems_sheet()
 
 # --- [데이터 통합 로드] ---
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800) # 30분 동안 캐시 유지 (429 에러 방지용)
 def load_full_data():
     try:
-        # 불러올 시트 목록
+        # 💡 [핵심] API 호출 사이에 아주 짧은 간격을 두어 구글 서버의 과부하 판단을 피합니다.
         sheets_to_load = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
         df_list = []
         
         for s in sheets_to_load:
             try:
+                # 1. 시트 가져오기
                 ws = sheet.worksheet(s)
                 data = ws.get_all_values()
+                
+                # 2. API 호출 직후 0.2초 정도 짧게 대기 (연속 호출 방지)
+                time.sleep(0.2) 
+                
                 if len(data) > 1:
-                    # 데이터 프레임 생성
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
+                    df["단지"] = s.split("_")[0]
+                    df["거래유형"] = s.split("_")[1]
                     
-                    # [중요] 여기서 '단지'와 '거래유형' 컬럼을 강제로 생성해줌
-                    df["단지"] = s.split("_")[0]  # "1단지", "2단지" 등
-                    df["거래유형"] = s.split("_")[1] # "매매", "임대"
-                    
-                    # 숫자 변환 로직
+                    # 숫자 변환
                     for col in ["매매가", "월세"]:
                         df[f"{col}_num"] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce').fillna(0)
                     
@@ -89,22 +91,19 @@ def load_full_data():
                 print(f"{s} 시트 로드 중 오류: {e}")
                 continue
         
-        # 사용자 목록 로드
+        # 사용자 목록 로드 (마지막에 한 번 더 대기)
+        time.sleep(0.3)
         user_ws = sheet.worksheet("사용자목록")
         u_data = user_ws.get_all_values()
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
         
-        # 전체 데이터 통합
         if df_list:
             final_df = pd.concat(df_list, ignore_index=True)
             return final_df, user_dict
-        else:
-            # 데이터가 하나도 없을 경우 빈 컬럼이라도 가진 DataFrame 반환 (KeyError 방지)
-            empty_df = pd.DataFrame(columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고", "단지", "거래유형"])
-            return empty_df, user_dict
+        return pd.DataFrame(), user_dict
             
     except Exception as e:
-        st.error(f"전체 데이터 로드 중 치명적 오류: {e}")
+        st.error(f"⚠️ 구글 서버 응답 지연 (429). 잠시 후(1분 뒤) 새로고침 해주세요.")
         return pd.DataFrame(), {}
 
 df_total, user_dict = load_full_data()
