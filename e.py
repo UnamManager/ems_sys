@@ -61,8 +61,7 @@ def get_ems_sheet():
 sheet = get_ems_sheet()
 
 # --- [데이터 통합 로드] ---
-@st.cache_data(ttl=300)
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def load_full_data():
     try:
         # 불러올 시트 목록
@@ -259,7 +258,14 @@ elif choice == "📅 세대관람 예약":
             st.error(f"시트 연결 오류: {e}")
             can_reserve = False
 
-        st.divider(); f_unit = df_total[df_total["단지"] == res_dj]; r_count = st.selectbox("관람 세대수", [1, 2])
+        st.divider()
+        if not df_total.empty and "단지" in df_total.columns:
+            f_unit = df_total[df_total["단지"] == res_dj]
+            # (이후 예약 관련 로직 실행)
+        else:
+            st.warning("⚠️ 현재 데이터를 불러올 수 없습니다. 잠시 후 새로고침(R)을 눌러주세요.")
+            st.stop()
+        r_count = st.selectbox("관람 세대수", [1, 2])
         r_items = []
         for i in range(r_count):
             with st.container(border=True):
