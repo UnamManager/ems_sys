@@ -498,7 +498,8 @@ elif choice == ADMIN_MENU_NAME:
                     sel_text = st.selectbox("변경할 예약 건", options)
                     row_idx = selection_map[sel_text]
                     with st.form("mod_form"):
-                        st.info(f"대상: {rows_mod[row_idx-1][1]} ({rows_mod[row_idx-1][2]})")
+                        curr_r = rows_mod[row_idx-1]
+                        st.info(f"📍 **대상:** {curr_r[1]} ({curr_r[2]})  \n🏠 **현재 예약:** {curr_r[4]}  \n⏰ **현재 시간:** {curr_r[6]}")
                         
                         # 1. 시간 수정
                         m_time = st.selectbox("🕒 관람시간 변경", TIME_SLOTS, 
