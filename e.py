@@ -207,7 +207,7 @@ elif choice == "🔍 등록 매물 조회":
 # =========================
 elif choice == "📅 세대관람 예약":
     st.title("📋 세대관람 예약 시스템")
-    tab1, tab2 = st.tabs(["📝 예약 등록", "📅 단지별 예약 현황"])
+    tab1, tab2, tab3 = st.tabs(["📝 예약 등록", "📅 단지별 예약 현황", "🛠️ 내 예약 관리"])
     
     with tab1:
         # --- [당일 예약 안내 디자인 섹션] ---
@@ -288,7 +288,7 @@ elif choice == "📅 세대관람 예약":
                     else:
                         combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
                         types_str = ", ".join([s["타입"] for s in r_items])
-                        new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, types_str, t_val, memo_input]
+                        new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, types_str, t_val, memo_input, st.session_state.user_id]
                         target_ws.append_row(new_row)
                         send_email_notification(f"예약자: {r_name}\n업소: {r_agency}\n단지: {res_dj}\n세대: {combined_info}\n시간: {t_val}")
                         st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1); st.cache_data.clear(); st.rerun()
@@ -349,7 +349,84 @@ elif choice == "📅 세대관람 예약":
                 st.info(f"📅 {sel_dj_view}에 등록된 예약 데이터가 없습니다.")
         except Exception as e:
             st.error(f"데이터 로드 실패: {e}")
+    with tab3:
+        st.subheader("👤 내가 등록한 예약 수정/취소")
+        my_dj = st.selectbox("수정할 예약의 단지 선택", ["1단지", "2단지", "3단지"], key="my_mod_dj")
+        
+        try:
+            ws_my = sheet.worksheet(f"{my_dj}_관람예약")
+            my_data = ws_my.get_all_values()
+            
+            if len(my_data) > 1:
+                # 9번째 컬럼(index 8)이 등록ID라고 가정
+                df_my = pd.DataFrame(my_data[1:], columns=my_data[0])
+                
+                # [핵심] 로그인한 유저 ID와 등록ID가 일치하는 것만 필터링
+                # 만약 시트에 '등록ID' 컬럼이 없다면 에러가 날 수 있으니 확인 필요
+                if "등록ID" in df_my.columns:
+                    my_res_only = df_my[df_my["등록ID"] == st.session_state.user_id]
+                else:
+                    # 기존 데이터에 ID가 없는 경우를 대비해 예약자명으로 2차 필터(선택사항)
+                    my_res_only = df_my[df_my["예약자"] == st.session_state.user_id]
 
+                if not my_res_only.empty:
+                    # 본인 예약 리스트업
+                    my_options = []
+                    my_map = {}
+                    for i, r in my_res_only.iterrows():
+                        opt = f"[{r['예약날짜']} {r['예약시간']}] {r['동호수']}"
+                        my_options.append(opt)
+                        my_map[opt] = i + 2 # 시트 행 번호
+                    
+                    sel_my_res = st.selectbox("수정/취소할 항목 선택", my_options)
+                    row_idx = my_map[sel_my_res]
+                    
+                    # 관리자 모드와 동일한 수정 폼 (본인이므로 날짜까지 수정 가능하게 구성)
+                    with st.form("my_mod_form"):
+                        m_date = st.date_input("📅 날짜 변경", value=datetime.strptime(my_data[row_idx-1][0], "%Y-%m-%d"))
+                        m_time = st.selectbox("🕒 시간 변경", TIME_SLOTS, 
+                                            index=TIME_SLOTS.index(my_data[row_idx-1][6]) if my_data[row_idx-1][6] in TIME_SLOTS else 0)
+                        
+                        f_unit_my = df_total[df_total["단지"] == my_dj]
+                        u_dongs_my = sorted(f_unit_my["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                        
+                        m_count = st.selectbox("🏠 관람 세대수 변경", [1, 2], 
+                                             index=0 if my_data[row_idx-1][3] == "1세대" else 1)
+                        
+                        new_items = []
+                        exist_units = my_data[row_idx-1][4].split(" / ")
+                        
+                        for i in range(m_count):
+                            c1, c2 = st.columns(2)
+                            d_val = exist_units[i].split("동")[0].strip() if i < len(exist_units) else u_dongs_my[0]
+                            m_d = c1.selectbox(f"동 ({i+1})", u_dongs_my, index=u_dongs_my.index(d_val) if d_val in u_dongs_my else 0, key=f"my_d_{i}")
+                            u_hos_my = sorted(f_unit_my[f_unit_my["동"]==m_d]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                            h_val = exist_units[i].split("동")[1].replace("호","").strip() if i < len(exist_units) else u_hos_my[0]
+                            m_h = c2.selectbox(f"호수 ({i+1})", u_hos_my, index=u_hos_my.index(h_val) if h_val in u_hos_my else 0, key=f"my_h_{i}")
+                            
+                            match_unit = f_unit_my[(f_unit_my["동"]==m_d) & (f_unit_my["호수"]==m_h)]
+                            if not match_unit.empty:
+                                new_items.append({"동": m_d, "호수": m_h, "타입": match_unit.iloc[0]['타입']})
+
+                        st.divider()
+                        cb1, cb2 = st.columns(2)
+                        if cb1.form_submit_button("💾 내 예약 수정 저장"):
+                            new_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in new_items])
+                            new_type = ", ".join([s["타입"] for s in new_items])
+                            # A(날짜), D(세대수), E(동호수), F(타입), G(시간) 업데이트
+                            ws_my.update(f'A{row_idx}', [[m_date.strftime("%Y-%m-%d")]])
+                            ws_my.update(f'D{row_idx}:G{row_idx}', [[f"{m_count}세대", new_info, new_type, m_time]])
+                            st.success("✅ 예약이 수정되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                            
+                        if cb2.form_submit_button("🗑️ 내 예약 취소", type="primary"):
+                            ws_my.delete_rows(row_idx)
+                            st.success("🗑️ 취소 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                else:
+                    st.info("해당 단지에 본인이 등록한 예약 내역이 없습니다.")
+            else:
+                st.info("등록된 데이터가 없습니다.")
+        except Exception as e:
+            st.error(f"데이터 로드 실패: {e}")
 # =========================
 # ⚙️ [페이지 4] 관리자 모드
 # =========================
