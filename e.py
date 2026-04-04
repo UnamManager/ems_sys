@@ -209,82 +209,52 @@ elif choice == "📅 세대관람 예약":
     tab1, tab2, tab3 = st.tabs(["📝 예약 등록", "📅 단지별 예약 현황", "🛠️ 내 예약 관리"])
     
     with tab1:
-        # --- [당일 예약 안내 디자인 섹션] ---
-        st.markdown("""
-            <div style="background-color: #fff3cd; padding: 15px; border-radius: 10px; border-left: 5px solid #ffc107; margin-bottom: 20px;">
-                <h4 style="margin: 0; color: #856404;">⚠️ 예약 안내 수칙</h4>
-                <p style="margin: 5px 0 0 0; font-size: 0.95rem; color: #856404;">
-                    • <b>당일 관람 예약</b>은 <b>오후 3시(15:00)</b>까지만 확정 가능합니다.<br>
-                    • 오후 3시 이후에는 익일(내일) 이후 날짜로만 예약이 가능하오니 참고 바랍니다.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        # ----------------------------------------
-        res_dj = st.selectbox("관람 단지 선택", ["1단지", "2단지", "3단지"], key="reserve_danji_select")
-        r_date_val = st.date_input("방문 날짜 선택", date.today())
-        t_val = st.selectbox("관람 시간 선택", TIME_SLOTS)
-        target_sheet_name = f"{res_dj}_관람예약"
-        try:
-            target_ws = sheet.worksheet(target_sheet_name)
-            all_res = target_ws.get_all_values()
-            
-            # 데이터 로드 및 현재 예약 인원 파악
-            daily_df = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=COL_NAMES)
-            mask = (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)
-            current_res_count = len(daily_df[mask])
-            
-            # --- [재민 추가: 당일 15시 마감 및 인원 체크 로직] ---
-            now = datetime.now()
-            is_today = (r_date_val == date.today()) # 선택한 날짜가 오늘인지 확인
-            
-            # 1. 인원 마감 체크 (3명)
-            if current_res_count >= 3:
-                st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)")
-                can_reserve = False
-            
-            # 2. 당일 15시 마감 체크 (추가된 기능)
-            elif is_today and now.hour >= 15:
-                st.error("⏰ 당일 예약은 오후 3시(15:00)까지만 확정 가능합니다. 내일 이후 날짜를 선택해주세요.")
-                can_reserve = False
-            
-            # 3. 예약 가능 상태
-            else:
-                st.info(f"✅ 현재 {3 - current_res_count}자리 예약 가능합니다. (현재 {current_res_count}/3)")
-                st.progress(current_res_count / 3)
-                can_reserve = True
-            # -----------------------------------------------
-
-        except Exception as e:
-            st.error(f"시트 연결 오류: {e}")
+        # --- [기존 can_reserve 판별 로직 강화] ---
+        now = datetime.now()
+        is_today = (r_date_val == date.today())
+        current_hour = now.hour
+        
+        can_reserve = True
+        error_msg = ""
+        
+        # 1. 당일 15시 마감 체크 (최우선 순위)
+        if is_today and current_hour >= 15:
+            st.error("⏰ 당일 예약은 오후 3시(15:00)에 마감되었습니다. 내일 이후 날짜를 선택해주세요.")
             can_reserve = False
-
-        st.divider()
-        if not df_total.empty and "단지" in df_total.columns:
-            f_unit = df_total[df_total["단지"] == res_dj]
-            # (이후 예약 관련 로직 실행)
+            error_msg = "당일 15시 예약 마감"
+        
+        # 2. 인원 마감 체크 (3명)
+        elif current_res_count >= 3:
+            st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)")
+            can_reserve = False
+            error_msg = "인원 초과 마감"
+        
+        # 3. 예약 가능 상태 표시
         else:
-            st.warning("⚠️ 현재 데이터를 불러올 수 없습니다. 잠시 후 새로고침(R)을 눌러주세요.")
-            st.stop()
-        r_count = st.selectbox("관람 세대수", [1, 2])
-        r_items = []
-        for i in range(r_count):
-            with st.container(border=True):
-                col1, col2 = st.columns(2)
-                u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                d_sel = col1.selectbox(f"동 ({i+1})", u_dongs, key=f"d_r_{i}")
-                u_hos = sorted(f_unit[f_unit["동"]==d_sel]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                h_sel = col2.selectbox(f"호수 ({i+1})", u_hos, key=f"h_r_{i}")
-                match = f_unit[(f_unit["동"]==d_sel) & (f_unit["호수"]==h_sel)]
-                if not match.empty: r_items.append({"동":d_sel, "호수":h_sel, "타입":match.iloc[0]['타입']})
-
+            st.info(f"✅ 현재 {3 - current_res_count}자리 예약 가능합니다. (현재 {current_res_count}/3)")
+            st.progress(current_res_count / 3)
+        
+        # -----------------------------------------------
+        
         with st.form("reserve_form"):
-            r_name = st.text_input("(📝필수) 예약자 성함[실명]"); r_agency = st.text_input("(📝필수) 중개업소 명칭")
+            r_name = st.text_input("(📝필수) 예약자 성함[실명]")
+            r_agency = st.text_input("(📝필수) 중개업소 명칭")
             memo_input = st.text_area("(선택) 비고 [방문 인원 수 또는 특이사항]")
+            
+            # 버튼 자체를 비활성화 시키지만, 혹시 모르니 클릭 시 내부에서도 한 번 더 체크합니다.
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
             if submit_btn:
-                if not r_name or not r_agency: st.error("성함과 업소명을 모두 입력해주세요.")
-                elif can_reserve:
+                # [강화된 2중 체크] 버튼이 눌려도 시간이 지났다면 차단
+                now_check = datetime.now()
+                if is_today and now_check.hour >= 15:
+                    st.error("🚨 시스템 안내: 15시가 경과되어 당일 예약을 확정할 수 없습니다.")
+                elif not can_reserve:
+                    st.error(f"🚨 예약 불가 사유: {error_msg}")
+                elif not r_name or not r_agency:
+                    st.error("성함과 업소명을 모두 입력해주세요.")
+                else:
+                    # 중복 체크 로직
                     is_duplicate = not daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & 
                                                 (daily_df["예약시간"] == t_val) & 
                                                 (daily_df["예약자"] == r_name) & 
@@ -292,13 +262,17 @@ elif choice == "📅 세대관람 예약":
                     if is_duplicate:
                         st.error(f"🚫 {r_name}님은 이미 해당 시간대에 예약 기록이 있습니다.")
                     else:
+                        # 최종 데이터 저장 실행
                         combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
                         types_str = ", ".join([s["타입"] for s in r_items])
                         new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, types_str, t_val, memo_input, st.session_state.user_id]
+                        
                         target_ws.append_row(new_row)
                         send_email_notification(f"예약자: {r_name}\n업소: {r_agency}\n단지: {res_dj}\n세대: {combined_info}\n시간: {t_val}")
-                        st.success(f"✅ {r_name}님, 예약 완료!"); time.sleep(1); st.cache_data.clear(); st.rerun()
-
+                        st.success(f"✅ {r_name}님, 예약 완료!")
+                        time.sleep(1)
+                        st.cache_data.clear()
+                        st.rerun()
     with tab2:
         st.subheader("📋 단지별 예약 현황")
         
