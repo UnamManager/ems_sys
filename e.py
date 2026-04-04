@@ -464,7 +464,6 @@ elif choice == ADMIN_MENU_NAME:
             if all_master:
                 res_df = pd.concat(all_master)
                 st.dataframe(res_df[res_df["예약날짜"] == adm_date.strftime("%Y-%m-%d")].sort_values(["단지", "예약시간"]), use_container_width=True, hide_index=True)
-
     with adm_tab3:
         st.subheader("✂️ 예약 정보 수정/삭제")
         col1, col2 = st.columns(2)
@@ -491,68 +490,83 @@ elif choice == ADMIN_MENU_NAME:
                     sel_text = st.selectbox("변경할 예약 건 선택", options, key="admin_sel_res")
                     row_idx = selection_map[sel_text]
                     
-                    # 수정을 위한 폼 시작
-                    with st.form("admin_mod_form"):
-                        curr_r = rows_mod[row_idx-1] # 현재 행의 데이터
-                        st.info(f"📍 대상: **{curr_r[1]}** | 현재: **{curr_r[4]}**")
+                    # --- 수정 로직 시작 (st.form 제거) ---
+                    curr_r = rows_mod[row_idx-1] # 현재 행의 데이터
+                    st.divider()
+                    st.info(f"📍 현재 예약 내용: **{curr_r[4]}**")
+                    
+                    # 1. 시간 수정
+                    m_time = st.selectbox("🕒 관람시간 변경", TIME_SLOTS, 
+                                         index=TIME_SLOTS.index(curr_r[6]) if curr_r[6] in TIME_SLOTS else 0,
+                                         key=f"adm_time_{row_idx}")
+                    
+                    # 2. 매물 정보 연동 로직
+                    mod_dj_name = d_sheet_name.split("_")[0] 
+                    f_unit_mod = df_total[df_total["단지"] == mod_dj_name]
+                    u_dongs_mod = sorted(f_unit_mod["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                    
+                    m_count = st.selectbox("🏠 관람 세대수 변경", [1, 2], 
+                                         index=0 if curr_r[3] == "1세대" else 1,
+                                         key=f"adm_count_{row_idx}")
+                    
+                    # 기존 저장된 동호수 분리 파싱 (예: "101동 101호 / 102동 202호")
+                    existing_units = curr_r[4].split(" / ")
+                    
+                    new_r_items = []
+                    for i in range(m_count):
+                        c1, c2 = st.columns(2)
                         
-                        # 1. 시간 수정
-                        m_time = st.selectbox("🕒 관람시간 변경", TIME_SLOTS, 
-                                             index=TIME_SLOTS.index(curr_r[6]) if curr_r[6] in TIME_SLOTS else 0)
-                        
-                        # 2. 매물 정보 연동 로직 (수정 핵심)
-                        mod_dj_name = d_sheet_name.split("_")[0] 
-                        
-                        # 전체 매물 데이터(df_total)에서 해당 단지만 필터링
-                        f_unit_mod = df_total[df_total["단지"] == mod_dj_name]
-                        u_dongs_mod = sorted(f_unit_mod["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                        
-                        m_count = st.selectbox("🏠 관람 세대수 변경", [1, 2], 
-                                             index=0 if curr_r[3] == "1세대" else 1,
-                                             key=f"adm_count_{row_idx}") # 고유 키 추가
-                        
-                        # 기존 저장된 동호수 분리 (예: "101동 101호 / 102동 202호")
-                        existing_units = curr_r[4].split(" / ")
-                        
-                        new_r_items = []
-                        for i in range(m_count):
-                            c1, c2 = st.columns(2)
-                            
-                            # 기존 동 설정
+                        # --- [동 선택] ---
+                        # 기존 데이터에서 동 추출 시도
+                        try:
                             d_val = existing_units[i].split("동")[0].strip() if i < len(existing_units) else u_dongs_mod[0]
-                            # [핵심] form 안에서는 selectbox 연동이 제한적이므로, 동 선택을 폼 밖으로 빼거나 
-                            # 혹은 아래와 같이 고유 키를 사용하여 현재 선택된 값을 추적해야 합니다.
-                            m_dong = c1.selectbox(f"동 ({i+1})", u_dongs_mod, 
+                        except:
+                            d_val = u_dongs_mod[0]
+                            
+                        sel_m_dong = c1.selectbox(f"동 ({i+1})", u_dongs_mod, 
                                                  index=u_dongs_mod.index(d_val) if d_val in u_dongs_mod else 0, 
                                                  key=f"adm_m_d_{row_idx}_{i}")
-                            
-                            # 해당 동에 맞는 호수 리스트 필터링
-                            u_hos_mod = sorted(f_unit_mod[f_unit_mod["동"] == m_dong]["호수"].unique(), 
-                                              key=lambda x: int(x) if x.isdigit() else 0)
-                            
-                            # 기존 호수 설정
+                        
+                        # --- [호수 선택: 동 선택에 따라 실시간 필터링] ---
+                        u_hos_mod = sorted(f_unit_mod[f_unit_mod["동"] == sel_m_dong]["호수"].unique(), 
+                                          key=lambda x: int(x) if x.isdigit() else 0)
+                        
+                        # 기존 데이터에서 호수 추출 시도
+                        try:
                             h_val = existing_units[i].split("동")[1].replace("호","").strip() if i < len(existing_units) else u_hos_mod[0]
-                            m_ho = c2.selectbox(f"호수 ({i+1})", u_hos_mod, 
+                        except:
+                            h_val = u_hos_mod[0]
+                            
+                        sel_m_ho = c2.selectbox(f"호수 ({i+1})", u_hos_mod, 
                                                index=u_hos_mod.index(h_val) if h_val in u_hos_mod else 0, 
                                                key=f"adm_m_h_{row_idx}_{i}")
-                            
-                            # 타입 매칭
-                            match_mod = f_unit_mod[(f_unit_mod["동"] == m_dong) & (f_unit_mod["호수"] == m_ho)]
-                            if not match_mod.empty:
-                                new_r_items.append({"동": m_dong, "호수": m_ho, "타입": match_mod.iloc[0]['타입']})
+                        
+                        # 타입 매칭
+                        match_mod = f_unit_mod[(f_unit_mod["동"] == sel_m_dong) & (f_unit_mod["호수"] == sel_m_ho)]
+                        if not match_mod.empty:
+                            new_r_items.append({"동": sel_m_dong, "호수": sel_m_ho, "타입": match_mod.iloc[0]['타입']})
 
-                        st.divider()
-                        btn1, btn2 = st.columns(2)
-                        if btn1.form_submit_button("💾 수정사항 저장"):
-                            new_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in new_r_items])
-                            new_type = ", ".join([s["타입"] for s in new_r_items])
-                            # D:세대수, E:동호수, F:타입, G:시간
-                            ws_mod.update(f'D{row_idx}:G{row_idx}', [[f"{m_count}세대", new_info, new_type, m_time]])
-                            st.success("✅ 수정 완료!"); st.cache_data.clear(); time.sleep(1); st.rerun()
-                            
-                        if btn2.form_submit_button("🗑️ 예약 삭제", type="primary"):
-                            ws_mod.delete_rows(row_idx)
-                            st.success("🗑️ 삭제 완료!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    st.divider()
+                    
+                    # 3. 최종 처리 버튼
+                    btn_col1, btn_col2 = st.columns(2)
+                    
+                    if btn_col1.button("💾 수정사항 저장", use_container_width=True, type="primary"):
+                        new_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in new_r_items])
+                        new_type = ", ".join([s["타입"] for s in new_r_items])
+                        # 구글 시트 업데이트 (D:세대수, E:동호수, F:타입, G:시간)
+                        ws_mod.update(f'D{row_idx}:G{row_idx}', [[f"{m_count}세대", new_info, new_type, m_time]])
+                        st.success("✅ 수정 완료!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    if btn_col2.button("🗑️ 예약 삭제", use_container_width=True):
+                        ws_mod.delete_rows(row_idx)
+                        st.success("🗑️ 삭제 완료!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
                 else:
                     st.info("📅 해당 날짜에 등록된 예약이 없습니다.")
             else:
