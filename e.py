@@ -501,12 +501,15 @@ elif choice == ADMIN_MENU_NAME:
                                              index=TIME_SLOTS.index(curr_r[6]) if curr_r[6] in TIME_SLOTS else 0)
                         
                         # 2. 매물 정보 연동 로직 (수정 핵심)
-                        mod_dj_only = d_sheet_name.split("_")[0] # "1단지" 등 추출
+                        mod_dj_name = d_sheet_name.split("_")[0] 
+                        
+                        # 전체 매물 데이터(df_total)에서 해당 단지만 필터링
                         f_unit_mod = df_total[df_total["단지"] == mod_dj_name]
                         u_dongs_mod = sorted(f_unit_mod["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
                         
                         m_count = st.selectbox("🏠 관람 세대수 변경", [1, 2], 
-                                             index=0 if curr_r[3] == "1세대" else 1)
+                                             index=0 if curr_r[3] == "1세대" else 1,
+                                             key=f"adm_count_{row_idx}") # 고유 키 추가
                         
                         # 기존 저장된 동호수 분리 (예: "101동 101호 / 102동 202호")
                         existing_units = curr_r[4].split(" / ")
