@@ -269,11 +269,6 @@ elif choice == "📅 세대관람 예약":
             t_val = st.selectbox("🕒 관람 시간 선택 (시작 30분 전/후 제한)", available_slots, key="res_time_select")
             can_reserve = True
 
-        # 4. 오후 3시 셧다운 추가 검증 (오늘 날짜인 경우만)
-        if is_today and now.hour >= 15:
-            st.warning("⚠️ 당일 관람 예약은 오후 3시에 최종 마감되었습니다.")
-            can_reserve = False
-
         # 시트 데이터 로드
         try:
             target_ws = sheet.worksheet(f"{res_dj}_관람예약")
@@ -290,7 +285,7 @@ elif choice == "📅 세대관람 예약":
         
         # 1. 오후 3시 셧다운 (당일 예약건만 해당)
         if is_today and now.hour >= 15:
-            error_msg = "⏰ 당일 예약은 오후 3시(15:00)에 마감되었습니다."
+            error_msg = "⏰ 당일 예약은 오후 3시(15:00)에 최종 마감되었습니다."
             can_reserve = False
         
         # 2. 본인 중복 예약 체크 (9번째 컬럼: 등록ID 기준)
