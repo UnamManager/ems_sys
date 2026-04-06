@@ -225,21 +225,21 @@ elif choice == "📅 세대관람 예약":
                                    min_value=today_date, 
                                    key="res_date_input")
         
-        # --- [시간 제한 및 중복 체크 로직] ---
         is_today = (r_date_val == today_date)
         available_slots = []
         
         for slot in TIME_SLOTS:
-            # "10:00 ~ 10:45"에서 "10:00" 추출
             start_time_str = slot.split(" ~ ")[0]
             sh, sm = map(int, start_time_str.split(":"))
             
-            # 오늘인 경우, 시작 시간에서 30분이 지난 타임은 리스트에서 제외
             if is_today:
-                # 해당 타임의 예약 마감 기준 (시작시간 + 30분)
+                # 현재 시간과 해당 슬롯의 "예약 마감 시간(시작시간+30분)" 비교
+                # 10:00 타임이면 10:30이 limit
                 slot_limit = now.replace(hour=sh, minute=sm, second=0, microsecond=0) + timedelta(minutes=30)
-                if now > slot_limit:
-                    continue # 현재 시간이 마감 기준을 넘었으면 목록에 안 넣음
+                
+                # [검증] 현재 시간이 마감 시간을 "단 1초라도" 넘으면 리스트에서 제외
+                if now >= slot_limit:
+                    continue 
             
             available_slots.append(slot)
 
@@ -403,7 +403,7 @@ elif choice == "📅 세대관람 예약":
 
                     st.divider()
                     # --- 수정 필드 (폼 제거) ---
-                    m_date = st.date_input("📅 날짜 변경", value=datetime.strptime(curr_my[0], "%Y-%m-%d"), min_value=date.today(), key=f"my_date_{row_idx}")
+                    m_date = st.date_input("📅 날짜 변경", value=datetime.strptime(curr_my[0], "%Y-%m-%d"), key=f"my_date_{row_idx}")
                     m_time = st.selectbox("🕒 시간 변경", TIME_SLOTS, 
                                          index=TIME_SLOTS.index(curr_my[6]) if curr_my[6] in TIME_SLOTS else 0, key=f"my_time_{row_idx}")
                     
