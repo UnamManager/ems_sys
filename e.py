@@ -209,44 +209,70 @@ elif choice == "📅 세대관람 예약":
     tab1, tab2, tab3 = st.tabs(["📝 예약 등록", "📅 단지별 예약 현황", "🛠️ 내 예약 관리"])
     
     with tab1:
-        # [수정] 위젯들을 먼저 배치 (form 밖에서 사용자의 선택을 받음)
+        st.subheader("📝 세대관람 예약 등록")
         c1, c2 = st.columns(2)
         res_dj = c1.selectbox("단지 선택", ["1단지", "2단지", "3단지"], key="res_dj_select")
+        
+        # [해결 2] 과거 날짜 선택 불가 (최소값을 오늘로 고정)
         r_date_val = c2.date_input("예약 날짜 선택", value=date.today(), min_value=date.today(), key="res_date_input")
         
-        t_val = st.selectbox("🕒 관람 시간 선택", TIME_SLOTS, key="res_time_select")
+        # --- [실시간 시간 제한 로직 (해결 3 & 4)] ---
+        now = datetime.now()
+        is_today = (r_date_val == date.today())
+        
+        available_slots = []
+        for slot in TIME_SLOTS:
+            start_time_str = slot.split(" ~ ")[0] # "10:00"
+            slot_hour = int(start_time_str.split(":")[0])
+            slot_minute = int(start_time_str.split(":")[1])
+            
+            # [해결 4] 해당 타임 시작 후 30분이 지났는지 체크
+            # 오늘인 경우에만 체크하며, 현재 시간이 (시작시간:30분)을 넘었으면 리스트에서 제외
+            slot_deadline = now.replace(hour=slot_hour, minute=slot_minute, second=0, microsecond=0)
+            from datetime import timedelta
+            
+            if is_today:
+                if now > (slot_deadline + timedelta(minutes=30)):
+                    continue # 30분 지났으면 리스트에 안 넣음
+            available_slots.append(slot)
 
-        # [방어 로직] 해당 단지 시트가 존재하는지 먼저 확인
+        if not available_slots:
+            st.warning("⚠️ 현재 예약 가능한 시간대가 없습니다.")
+            can_reserve = False
+        else:
+            t_val = st.selectbox("🕒 관람 시간 선택", available_slots, key="res_time_select")
+            can_reserve = True
+
+        # 시트 데이터 로드 및 중복 체크용
         try:
             target_ws = sheet.worksheet(f"{res_dj}_관람예약")
             all_res = target_ws.get_all_values()
             daily_df = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=COL_NAMES)
-        except Exception as e:
-            st.error(f"⚠️ '{res_dj}_관람예약' 시트를 찾을 수 없거나 접근 권한이 없습니다. 시트 이름을 확인해주세요.")
-            st.stop() # 시트가 없으면 이후 로직 실행 중단
+        except:
+            st.error("시트 로드 오류"); st.stop()
 
-        # 현재 시간대 예약 인원 계산
-        current_res_count = len(daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)])
+        # [해결 1] 동일인 중복 예약 체크 (날짜 + 시간 + 작성자ID)
+        duplicate_check = daily_df[
+            (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & 
+            (daily_df["예약시간"] == t_val) & 
+            (daily_df.iloc[:, 8] == st.session_state.user_id) # 9번째 컬럼이 등록ID인 경우
+        ]
 
-        # --- [예약 제한 로직] ---
-        now = datetime.now()
-        is_today = (r_date_val == date.today())
-        current_hour = now.hour
-        
-        can_reserve = True
-        error_msg = ""
-        
-        if is_today and current_hour >= 15:
-            st.error("⏰ 당일 예약은 오후 3시(15:00)에 마감되었습니다. 내일 이후 날짜를 선택해주세요.")
+        # [해결 3] 당일 오후 3시 이후 셧다운
+        if is_today and now.hour >= 15:
+            st.error("⏰ 당일 예약은 오후 3시에 마감되었습니다. 내일 이후를 선택해주세요.")
             can_reserve = False
-        elif current_res_count >= 3:
+        elif not duplicate_check.empty:
+            st.error("🚫 이미 해당 시간대에 본인의 예약이 존재합니다. 중복 예약은 불가합니다.")
+            can_reserve = False
+        
+        # 인원수 체크
+        current_res_count = len(daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)])
+        if current_res_count >= 3:
             st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)")
             can_reserve = False
-        else:
-            st.info(f"✅ 현재 {3 - current_res_count}자리 예약 가능합니다.")
-            st.progress(current_res_count / 3)
 
-        # --- [매물 선택 위젯] ---
+        # --- [매물 선택 및 폼 제출] ---
         f_unit = df_total[df_total["단지"] == res_dj]
         u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
         r_count = st.selectbox("🏠 관람 세대수 (최대 2세대)", [1, 2], key="res_count_select")
@@ -254,38 +280,29 @@ elif choice == "📅 세대관람 예약":
         r_items = []
         for i in range(r_count):
             row_c1, row_c2 = st.columns(2)
-            sel_d = row_c1.selectbox(f"동 ({i+1})", u_dongs, key=f"d_{i}")
+            sel_d = row_c1.selectbox(f"동 ({i+1})", u_dongs, key=f"reg_d_{i}")
             u_hos = sorted(f_unit[f_unit["동"] == sel_d]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-            sel_h = row_c2.selectbox(f"호수 ({i+1})", u_hos, key=f"h_{i}")
-            
+            sel_h = row_c2.selectbox(f"호수 ({i+1})", u_hos, key=f"reg_h_{i}")
             match = f_unit[(f_unit["동"] == sel_d) & (f_unit["호수"] == sel_h)]
             if not match.empty:
                 r_items.append({"동": sel_d, "호수": sel_h, "타입": match.iloc[0]['타입']})
 
-        # --- [최종 예약 폼] ---
-        with st.form("reserve_form", clear_on_submit=False):
+        with st.form("reserve_form"):
             r_name = st.text_input("(📝필수) 예약자 성함[실명]")
             r_agency = st.text_input("(📝필수) 중개업소 명칭")
-            memo_input = st.text_area("(선택) 비고 [방문 인원 수 또는 특이사항]")
-            
+            memo_input = st.text_area("(선택) 비고")
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
             if submit_btn:
-                # 제출 버튼 클릭 시 시트 데이터를 다시 한 번 최신화하여 중복/시간 체크 (선택사항)
                 if not r_name or not r_agency:
-                    st.error("성함과 업소명을 모두 입력해주세요.")
+                    st.error("필수 정보를 입력해주세요.")
                 else:
-                    # 최종 데이터 저장 실행
                     combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
                     types_str = ", ".join([s["타입"] for s in r_items])
                     new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, types_str, t_val, memo_input, st.session_state.user_id]
-                    
                     target_ws.append_row(new_row)
-                    send_email_notification(f"예약자: {r_name}\n업소: {r_agency}\n세대: {combined_info}\n시간: {t_val}")
-                    st.success("✅ 예약 완료!")
-                    st.cache_data.clear()
-                    time.sleep(1)
-                    st.rerun()
+                    st.success("✅ 예약이 완료되었습니다!")
+                    st.cache_data.clear(); time.sleep(1); st.rerun()
     with tab2:
         st.subheader("📋 단지별 예약 현황")
         
@@ -343,83 +360,75 @@ elif choice == "📅 세대관람 예약":
         except Exception as e:
             st.error(f"데이터 로드 실패: {e}")
     with tab3:
-        st.subheader("👤 내가 등록한 예약 수정/취소")
-        my_dj = st.selectbox("수정할 예약의 단지 선택", ["1단지", "2단지", "3단지"], key="my_mod_dj")
+        st.subheader("👤 내 예약 수정/취소")
+        my_dj = st.selectbox("수정할 예약의 단지 선택", ["1단지", "2단지", "3단지"], key="my_mod_dj_sel")
         
         try:
             ws_my = sheet.worksheet(f"{my_dj}_관람예약")
             my_data = ws_my.get_all_values()
             
             if len(my_data) > 1:
-                # 9번째 컬럼(index 8)이 등록ID라고 가정
                 df_my = pd.DataFrame(my_data[1:], columns=my_data[0])
-                
-                # [핵심] 로그인한 유저 ID와 등록ID가 일치하는 것만 필터링
-                # 만약 시트에 '등록ID' 컬럼이 없다면 에러가 날 수 있으니 확인 필요
-                if "등록ID" in df_my.columns:
-                    my_res_only = df_my[df_my["등록ID"] == st.session_state.user_id]
-                else:
-                    # 기존 데이터에 ID가 없는 경우를 대비해 예약자명으로 2차 필터(선택사항)
-                    my_res_only = df_my[df_my["예약자"] == st.session_state.user_id]
+                # 등록ID 컬럼이 9번째(Index 8)에 있다고 가정
+                my_res_only = df_my[df_my.iloc[:, 8] == st.session_state.user_id]
 
                 if not my_res_only.empty:
-                    # 본인 예약 리스트업
                     my_options = []
                     my_map = {}
                     for i, r in my_res_only.iterrows():
                         opt = f"[{r['예약날짜']} {r['예약시간']}] {r['동호수']}"
                         my_options.append(opt)
-                        my_map[opt] = i + 2 # 시트 행 번호
+                        my_map[opt] = i + 2 
                     
-                    sel_my_res = st.selectbox("수정/취소할 항목 선택", my_options)
+                    sel_my_res = st.selectbox("수정/취소할 항목 선택", my_options, key="sel_my_res_box")
                     row_idx = my_map[sel_my_res]
-                    
-                    # 관리자 모드와 동일한 수정 폼 (본인이므로 날짜까지 수정 가능하게 구성)
-                    with st.form("my_mod_form"):
-                        m_date = st.date_input("📅 날짜 변경", value=datetime.strptime(my_data[row_idx-1][0], "%Y-%m-%d"))
-                        m_time = st.selectbox("🕒 시간 변경", TIME_SLOTS, 
-                                            index=TIME_SLOTS.index(my_data[row_idx-1][6]) if my_data[row_idx-1][6] in TIME_SLOTS else 0)
-                        
-                        f_unit_my = df_total[df_total["단지"] == my_dj]
-                        u_dongs_my = sorted(f_unit_my["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                        
-                        m_count = st.selectbox("🏠 관람 세대수 변경", [1, 2], 
-                                             index=0 if my_data[row_idx-1][3] == "1세대" else 1)
-                        
-                        new_items = []
-                        exist_units = my_data[row_idx-1][4].split(" / ")
-                        
-                        for i in range(m_count):
-                            c1, c2 = st.columns(2)
-                            d_val = exist_units[i].split("동")[0].strip() if i < len(exist_units) else u_dongs_my[0]
-                            m_d = c1.selectbox(f"동 ({i+1})", u_dongs_my, index=u_dongs_my.index(d_val) if d_val in u_dongs_my else 0, key=f"my_d_{i}")
-                            u_hos_my = sorted(f_unit_my[f_unit_my["동"]==m_d]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-                            h_val = exist_units[i].split("동")[1].replace("호","").strip() if i < len(exist_units) else u_hos_my[0]
-                            m_h = c2.selectbox(f"호수 ({i+1})", u_hos_my, index=u_hos_my.index(h_val) if h_val in u_hos_my else 0, key=f"my_h_{i}")
-                            
-                            match_unit = f_unit_my[(f_unit_my["동"]==m_d) & (f_unit_my["호수"]==m_h)]
-                            if not match_unit.empty:
-                                new_items.append({"동": m_d, "호수": m_h, "타입": match_unit.iloc[0]['타입']})
+                    curr_my = my_data[row_idx-1]
 
-                        st.divider()
-                        cb1, cb2 = st.columns(2)
-                        if cb1.form_submit_button("💾 내 예약 수정 저장"):
-                            new_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in new_items])
-                            new_type = ", ".join([s["타입"] for s in new_items])
-                            # A(날짜), D(세대수), E(동호수), F(타입), G(시간) 업데이트
-                            ws_my.update(f'A{row_idx}', [[m_date.strftime("%Y-%m-%d")]])
-                            ws_my.update(f'D{row_idx}:G{row_idx}', [[f"{m_count}세대", new_info, new_type, m_time]])
-                            st.success("✅ 예약이 수정되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
-                            
-                        if cb2.form_submit_button("🗑️ 내 예약 취소", type="primary"):
-                            ws_my.delete_rows(row_idx)
-                            st.success("🗑️ 취소 완료"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    st.divider()
+                    # --- 수정 필드 (폼 제거) ---
+                    m_date = st.date_input("📅 날짜 변경", value=datetime.strptime(curr_my[0], "%Y-%m-%d"), min_value=date.today(), key=f"my_date_{row_idx}")
+                    m_time = st.selectbox("🕒 시간 변경", TIME_SLOTS, 
+                                         index=TIME_SLOTS.index(curr_my[6]) if curr_my[6] in TIME_SLOTS else 0, key=f"my_time_{row_idx}")
+                    
+                    f_unit_my = df_total[df_total["단지"] == my_dj]
+                    u_dongs_my = sorted(f_unit_my["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                    m_count = st.selectbox("🏠 세대수 변경", [1, 2], index=0 if curr_my[3] == "1세대" else 1, key=f"my_cnt_{row_idx}")
+                    
+                    exist_units = curr_my[4].split(" / ")
+                    new_items = []
+                    for i in range(m_count):
+                        c1, c2 = st.columns(2)
+                        d_val = exist_units[i].split("동")[0].strip() if i < len(exist_units) else u_dongs_my[0]
+                        m_d = c1.selectbox(f"동 ({i+1})", u_dongs_my, index=u_dongs_my.index(d_val) if d_val in u_dongs_my else 0, key=f"my_d_box_{row_idx}_{i}")
+                        
+                        u_hos_my = sorted(f_unit_my[f_unit_my["동"]==m_d]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+                        try:
+                            h_val = exist_units[i].split("동")[1].replace("호","").strip() if i < len(exist_units) else u_hos_my[0]
+                        except: h_val = u_hos_my[0]
+                        
+                        m_h = c2.selectbox(f"호수 ({i+1})", u_hos_my, index=u_hos_my.index(h_val) if h_val in u_hos_my else 0, key=f"my_h_box_{row_idx}_{i}")
+                        match_u = f_unit_my[(f_unit_my["동"]==m_d) & (f_unit_my["호수"]==m_h)]
+                        if not match_u.empty:
+                            new_items.append({"동": m_d, "호수": m_h, "타입": match_u.iloc[0]['타입']})
+
+                    # 버튼 처리
+                    b1, b2 = st.columns(2)
+                    if b1.button("💾 수정 저장", use_container_width=True, type="primary", key=f"save_{row_idx}"):
+                        new_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in new_items])
+                        new_type = ", ".join([s["타입"] for s in new_items])
+                        ws_my.update(f'A{row_idx}', [[m_date.strftime("%Y-%m-%d")]])
+                        ws_my.update(f'D{row_idx}:G{row_idx}', [[f"{m_count}세대", new_info, new_type, m_time]])
+                        st.success("수정되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    
+                    if b2.button("🗑️ 예약 취소", use_container_width=True, key=f"del_{row_idx}"):
+                        ws_my.delete_rows(row_idx)
+                        st.success("취소되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
                 else:
-                    st.info("해당 단지에 본인이 등록한 예약 내역이 없습니다.")
+                    st.info("본인의 예약 내역이 없습니다.")
             else:
-                st.info("등록된 데이터가 없습니다.")
+                st.info("데이터가 없습니다.")
         except Exception as e:
-            st.error(f"데이터 로드 실패: {e}")
+            st.error(f"오류: {e}")
 # =========================
 # ⚙️ [페이지 4] 관리자 모드
 # =========================
