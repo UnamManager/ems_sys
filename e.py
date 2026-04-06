@@ -212,43 +212,56 @@ elif choice == "📅 세대관람 예약":
     with tab1:
         st.subheader("📝 세대관람 예약 등록")
         
-        # [오류 해결] 현재 날짜를 변수에 담아 안전하게 사용
-        today_date = date.today()
+        # 1. 기준 시간 설정 (초 단위까지 명확히)
         now = datetime.now()
+        today_date = date.today()
         
         c1, c2 = st.columns(2)
         res_dj = c1.selectbox("단지 선택", ["1단지", "2단지", "3단지"], key="res_dj_select")
         
-        # [해결] value와 min_value를 모두 오늘로 일치시켜 과거 날짜 오류 방지
+        # 2. 예약 날짜 선택 (과거 날짜 차단)
         r_date_val = c2.date_input("예약 날짜 선택", 
                                    value=today_date, 
                                    min_value=today_date, 
                                    key="res_date_input")
         
-        is_today = (r_date_val == today_date)
+        # --- [핵심: 시간 제한 필터링 로직] ---
+        # 선택한 날짜가 오늘인지 다시 한번 확실히 체크 (문자열 비교로 안전하게)
+        is_today = (r_date_val.strftime("%Y-%m-%d") == today_date.strftime("%Y-%m-%d"))
+        
         available_slots = []
         
         for slot in TIME_SLOTS:
-            start_time_str = slot.split(" ~ ")[0]
-            sh, sm = map(int, start_time_str.split(":"))
+            # "10:00 ~ 10:45" -> "10", "00" 추출
+            start_time_part = slot.split(" ~ ")[0]
+            sh, sm = map(int, start_time_part.split(":"))
             
             if is_today:
-                # 현재 시간과 해당 슬롯의 "예약 마감 시간(시작시간+30분)" 비교
-                # 10:00 타임이면 10:30이 limit
+                # 해당 슬롯의 예약 마감 시각 생성 (예: 10:00 타임 -> 오늘 10:30:00)
+                # 시작 시간으로부터 30분이 지나면 예약 불가
                 slot_limit = now.replace(hour=sh, minute=sm, second=0, microsecond=0) + timedelta(minutes=30)
                 
-                # [검증] 현재 시간이 마감 시간을 "단 1초라도" 넘으면 리스트에서 제외
+                # 현재 시간이 마감 시각을 지났다면 목록에 추가하지 않음
                 if now >= slot_limit:
                     continue 
             
             available_slots.append(slot)
 
+        # 3. 슬롯 유무에 따른 위젯 처리
         if not available_slots:
-            st.error("⚠️ 오늘 예약 가능한 모든 시간대가 마감되었습니다.")
+            st.error("⏰ 오늘 예약 가능한 모든 시간대가 마감되었습니다. (타임 시작 30분 경과)")
             can_reserve = False
+            # 빈 셀렉트박스라도 보여주어 에러 방지
+            st.selectbox("🕒 관람 시간 (선택 불가)", ["선택 가능한 시간 없음"], disabled=True)
+            t_val = "마감"
         else:
-            t_val = st.selectbox("🕒 관람 시간 선택 (타입별 시작 후 30분까지만 예약 가능)", available_slots, key="res_time_select")
+            t_val = st.selectbox("🕒 관람 시간 선택 (시작 30분 전/후 제한)", available_slots, key="res_time_select")
             can_reserve = True
+
+        # 4. 오후 3시 셧다운 추가 검증 (오늘 날짜인 경우만)
+        if is_today and now.hour >= 15:
+            st.warning("⚠️ 당일 관람 예약은 오후 3시에 최종 마감되었습니다.")
+            can_reserve = False
 
         # 시트 데이터 로드
         try:
