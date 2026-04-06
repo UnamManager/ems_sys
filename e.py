@@ -212,38 +212,49 @@ elif choice == "📅 세대관람 예약":
     with tab1:
         st.subheader("📝 세대관람 예약 등록")
         
-        # 1. 기준 시간 설정 (초 단위까지 명확히)
-        now = datetime.now()
-        today_date = date.today()
+        # --- [KST 한국 시간 보정 로직] ---
+        # 서버 시간이 UTC일 경우를 대비해 9시간을 더해줍니다.
+        from datetime import timedelta, timezone
+        
+        # 타임존을 한국(KST)으로 강제 설정
+        KST = timezone(timedelta(hours=9))
+        now = datetime.now(KST) # 현재 한국 시간
+        today_date = now.date() # 한국 날짜
         
         c1, c2 = st.columns(2)
         res_dj = c1.selectbox("단지 선택", ["1단지", "2단지", "3단지"], key="res_dj_select")
         
-        # 2. 예약 날짜 선택 (과거 날짜 차단)
+        # 날짜 선택 위젯 (기본값과 최소값을 한국 날짜로 설정)
         r_date_val = c2.date_input("예약 날짜 선택", 
                                    value=today_date, 
                                    min_value=today_date, 
                                    key="res_date_input")
         
-        # --- [핵심: 시간 제한 필터링 로직] ---
-        # 선택한 날짜가 오늘인지 다시 한번 확실히 체크 (문자열 비교로 안전하게)
-        is_today = (r_date_val.strftime("%Y-%m-%d") == today_date.strftime("%Y-%m-%d"))
-        
+        # --- [시간 필터링 로직] ---
+        is_today = (r_date_val == today_date)
         available_slots = []
         
+        # 현재 시간을 "1105" 같은 숫자로 변환해서 비교하면 가장 정확합니다.
+        curr_time_num = int(now.strftime("%H%M")) # 예: 11시 05분 -> 1105
+        
         for slot in TIME_SLOTS:
-            # "10:00 ~ 10:45" -> "10", "00" 추출
-            start_time_part = slot.split(" ~ ")[0]
+            start_time_part = slot.split(" ~ ")[0] # "10:00"
             sh, sm = map(int, start_time_part.split(":"))
             
+            # 마감 시간 계산 (시작 시간 + 30분)
+            # 10:00 타임의 마감은 10:30 (숫자로 1030)
+            limit_minute = sm + 30
+            limit_hour = sh
+            if limit_minute >= 60:
+                limit_hour += 1
+                limit_minute -= 60
+            
+            limit_num = int(f"{limit_hour:02d}{limit_minute:02d}")
+            
             if is_today:
-                # 해당 슬롯의 예약 마감 시각 생성 (예: 10:00 타임 -> 오늘 10:30:00)
-                # 시작 시간으로부터 30분이 지나면 예약 불가
-                slot_limit = now.replace(hour=sh, minute=sm, second=0, microsecond=0) + timedelta(minutes=30)
-                
-                # 현재 시간이 마감 시각을 지났다면 목록에 추가하지 않음
-                if now >= slot_limit:
-                    continue 
+                # [필터] 현재 한국 시간이 마감 시간(limit_num)보다 크면 제외
+                if curr_time_num >= limit_num:
+                    continue
             
             available_slots.append(slot)
 
