@@ -210,69 +210,78 @@ elif choice == "📅 세대관람 예약":
     
     with tab1:
         st.subheader("📝 세대관람 예약 등록")
+        
+        # [오류 해결] 현재 날짜를 변수에 담아 안전하게 사용
+        today_date = date.today()
+        now = datetime.now()
+        
         c1, c2 = st.columns(2)
         res_dj = c1.selectbox("단지 선택", ["1단지", "2단지", "3단지"], key="res_dj_select")
         
-        # [해결 2] 과거 날짜 선택 불가 (최소값을 오늘로 고정)
-        r_date_val = c2.date_input("예약 날짜 선택", value=date.today(), min_value=date.today(), key="res_date_input")
+        # [해결] value와 min_value를 모두 오늘로 일치시켜 과거 날짜 오류 방지
+        r_date_val = c2.date_input("예약 날짜 선택", 
+                                   value=today_date, 
+                                   min_value=today_date, 
+                                   key="res_date_input")
         
-        # --- [실시간 시간 제한 로직 (해결 3 & 4)] ---
-        now = datetime.now()
-        is_today = (r_date_val == date.today())
-        
+        # --- [시간 제한 및 중복 체크 로직] ---
+        is_today = (r_date_val == today_date)
         available_slots = []
+        
         for slot in TIME_SLOTS:
-            start_time_str = slot.split(" ~ ")[0] # "10:00"
-            slot_hour = int(start_time_str.split(":")[0])
-            slot_minute = int(start_time_str.split(":")[1])
+            # "10:00 ~ 10:45"에서 "10:00" 추출
+            start_time_str = slot.split(" ~ ")[0]
+            sh, sm = map(int, start_time_str.split(":"))
             
-            # [해결 4] 해당 타임 시작 후 30분이 지났는지 체크
-            # 오늘인 경우에만 체크하며, 현재 시간이 (시작시간:30분)을 넘었으면 리스트에서 제외
-            slot_deadline = now.replace(hour=slot_hour, minute=slot_minute, second=0, microsecond=0)
-            from datetime import timedelta
-            
+            # 오늘인 경우, 시작 시간에서 30분이 지난 타임은 리스트에서 제외
             if is_today:
-                if now > (slot_deadline + timedelta(minutes=30)):
-                    continue # 30분 지났으면 리스트에 안 넣음
+                # 해당 타임의 예약 마감 기준 (시작시간 + 30분)
+                slot_limit = now.replace(hour=sh, minute=sm, second=0, microsecond=0) + timedelta(minutes=30)
+                if now > slot_limit:
+                    continue # 현재 시간이 마감 기준을 넘었으면 목록에 안 넣음
+            
             available_slots.append(slot)
 
         if not available_slots:
-            st.warning("⚠️ 현재 예약 가능한 시간대가 없습니다.")
+            st.error("⚠️ 오늘 예약 가능한 모든 시간대가 마감되었습니다.")
             can_reserve = False
         else:
-            t_val = st.selectbox("🕒 관람 시간 선택", available_slots, key="res_time_select")
+            t_val = st.selectbox("🕒 관람 시간 선택 (타입별 시작 후 30분까지만 예약 가능)", available_slots, key="res_time_select")
             can_reserve = True
 
-        # 시트 데이터 로드 및 중복 체크용
+        # 시트 데이터 로드
         try:
             target_ws = sheet.worksheet(f"{res_dj}_관람예약")
             all_res = target_ws.get_all_values()
             daily_df = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=COL_NAMES)
         except:
-            st.error("시트 로드 오류"); st.stop()
+            st.error("구글 시트 연결 실패"); st.stop()
 
-        # [해결 1] 동일인 중복 예약 체크 (날짜 + 시간 + 작성자ID)
-        duplicate_check = daily_df[
-            (daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & 
-            (daily_df["예약시간"] == t_val) & 
-            (daily_df.iloc[:, 8] == st.session_state.user_id) # 9번째 컬럼이 등록ID인 경우
-        ]
+        # [필터링] 해당 날짜/시간의 예약 정보
+        v_filtered = daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)]
 
-        # [해결 3] 당일 오후 3시 이후 셧다운
+        # --- [최종 예약 차단 조건문] ---
+        error_msg = ""
+        
+        # 1. 오후 3시 셧다운 (당일 예약건만 해당)
         if is_today and now.hour >= 15:
-            st.error("⏰ 당일 예약은 오후 3시에 마감되었습니다. 내일 이후를 선택해주세요.")
-            can_reserve = False
-        elif not duplicate_check.empty:
-            st.error("🚫 이미 해당 시간대에 본인의 예약이 존재합니다. 중복 예약은 불가합니다.")
+            error_msg = "⏰ 당일 예약은 오후 3시(15:00)에 마감되었습니다."
             can_reserve = False
         
-        # 인원수 체크
-        current_res_count = len(daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)])
-        if current_res_count >= 3:
-            st.error(f"🚫 해당 시간대({t_val})는 예약이 마감되었습니다. (3/3)")
+        # 2. 본인 중복 예약 체크 (9번째 컬럼: 등록ID 기준)
+        elif not v_filtered.empty and st.session_state.user_id in v_filtered.iloc[:, 8].values:
+            error_msg = "🚫 이미 동일한 시간대에 예약한 내역이 있습니다. (1인 1개 타임만 가능)"
+            can_reserve = False
+            
+        # 3. 시간대별 3명 정원 체크
+        elif len(v_filtered) >= 3:
+            error_msg = f"🚫 {t_val} 타임은 이미 3명이 예약하여 마감되었습니다."
             can_reserve = False
 
-        # --- [매물 선택 및 폼 제출] ---
+        if not can_reserve:
+            st.warning(error_msg)
+
+        # --- [매물 선택 위젯] ---
         f_unit = df_total[df_total["단지"] == res_dj]
         u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
         r_count = st.selectbox("🏠 관람 세대수 (최대 2세대)", [1, 2], key="res_count_select")
@@ -280,29 +289,36 @@ elif choice == "📅 세대관람 예약":
         r_items = []
         for i in range(r_count):
             row_c1, row_c2 = st.columns(2)
-            sel_d = row_c1.selectbox(f"동 ({i+1})", u_dongs, key=f"reg_d_{i}")
+            sel_d = row_c1.selectbox(f"동 ({i+1})", u_dongs, key=f"r_d_{i}")
             u_hos = sorted(f_unit[f_unit["동"] == sel_d]["호수"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-            sel_h = row_c2.selectbox(f"호수 ({i+1})", u_hos, key=f"reg_h_{i}")
+            sel_h = row_c2.selectbox(f"호수 ({i+1})", u_hos, key=f"r_h_{i}")
             match = f_unit[(f_unit["동"] == sel_d) & (f_unit["호수"] == sel_h)]
             if not match.empty:
                 r_items.append({"동": sel_d, "호수": sel_h, "타입": match.iloc[0]['타입']})
 
+        # --- [최종 예약 폼] ---
         with st.form("reserve_form"):
             r_name = st.text_input("(📝필수) 예약자 성함[실명]")
             r_agency = st.text_input("(📝필수) 중개업소 명칭")
             memo_input = st.text_area("(선택) 비고")
+            
+            # [핵심] submit_btn의 disabled 속성에 can_reserve를 연결하여 버튼 자체를 무력화
             submit_btn = st.form_submit_button("📅 예약 최종 확정", disabled=not can_reserve)
             
             if submit_btn:
+                # 폼 안에서 한 번 더 시간 검증 (새로고침 안 하고 버티는 사람 방어)
                 if not r_name or not r_agency:
-                    st.error("필수 정보를 입력해주세요.")
+                    st.error("성함과 업소명을 입력하세요.")
                 else:
                     combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
                     types_str = ", ".join([s["타입"] for s in r_items])
                     new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, types_str, t_val, memo_input, st.session_state.user_id]
+                    
                     target_ws.append_row(new_row)
-                    st.success("✅ 예약이 완료되었습니다!")
-                    st.cache_data.clear(); time.sleep(1); st.rerun()
+                    st.success("✅ 예약이 정상적으로 완료되었습니다!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
     with tab2:
         st.subheader("📋 단지별 예약 현황")
         
