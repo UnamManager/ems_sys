@@ -512,20 +512,62 @@ elif choice == ADMIN_MENU_NAME:
             else: st.error("매물을 찾을 수 없습니다.")
 
     with adm_tab2:
-        adm_date = st.date_input("날짜 선택", date.today(), key="adm_date_view")
-        if st.button("전체 단지 예약 불러오기"):
-            all_master = []
-            for s in ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"]:
-                try:
-                    data = sheet.worksheet(s).get_all_values()
-                    if len(data) > 1:
-                        tmp = pd.DataFrame(data[1:], columns=data[0])
-                        tmp["단지"] = s.split("_")[0]
-                        all_master.append(tmp)
-                except: continue
-            if all_master:
-                res_df = pd.concat(all_master)
-                st.dataframe(res_df[res_df["예약날짜"] == adm_date.strftime("%Y-%m-%d")].sort_values(["단지", "예약시간"]), use_container_width=True, hide_index=True)
+        st.subheader("📅 단지별 전체 예약 데이터 조회")
+        
+        # 1. 날짜 선택
+        adm_date = st.date_input("조회 날짜 선택", date.today(), key="adm_date_view")
+        formatted_date = adm_date.strftime("%Y-%m-%d")
+        
+        # 2. 단지별 탭 생성
+        adj_tab1, adj_tab2, adj_tab3, adj_all = st.tabs(["1단지", "2단지", "3단지", "📊 전체보기"])
+        
+        # 데이터 로드 함수 (관리자용)
+        def get_admin_res_data(danji_name):
+            try:
+                # "1단지_관람예약" 형태의 시트 호출
+                ws = sheet.worksheet(f"{danji_name}_관람예약")
+                data = ws.get_all_values()
+                if len(data) > 1:
+                    df = pd.DataFrame(data[1:], columns=data[0])
+                    # 해당 날짜 필터링 및 시간순 정렬
+                    df = df[df["예약날짜"] == formatted_date]
+                    df['예약시간'] = pd.Categorical(df['예약시간'], categories=TIME_SLOTS, ordered=True)
+                    return df.sort_values("예약시간")
+                return pd.DataFrame(columns=COL_NAMES)
+            except:
+                return pd.DataFrame(columns=COL_NAMES)
+
+        # --- [각 탭별 출력] ---
+        with adj_tab1:
+            df1 = get_admin_res_data("1단지")
+            st.write(f"🏠 **1단지** 예약 : {len(df1)}건")
+            st.dataframe(df1, use_container_width=True, hide_index=True)
+
+        with adj_tab2:
+            df2 = get_admin_res_data("2단지")
+            st.write(f"🏠 **2단지** 예약 : {len(df2)}건")
+            st.dataframe(df2, use_container_width=True, hide_index=True)
+
+        with adj_tab3:
+            df3 = get_admin_res_data("3단지")
+            st.write(f"🏠 **3단지** 예약 : {len(df3)}건")
+            st.dataframe(df3, use_container_width=True, hide_index=True)
+
+        with adj_all:
+            # 모든 데이터를 합쳐서 보기
+            all_list = []
+            for d_name in ["1단지", "2단지", "3단지"]:
+                tmp = get_admin_res_data(d_name)
+                if not tmp.empty:
+                    tmp["단지"] = d_name
+                    all_list.append(tmp)
+            
+            if all_list:
+                full_df = pd.concat(all_list)
+                st.write(f"🌐 **전체 단지** 통합 : {len(full_df)}건")
+                st.dataframe(full_df.sort_values(["단지", "예약시간"]), use_container_width=True, hide_index=True)
+            else:
+                st.info("해당 날짜에 등록된 예약이 전체 단지에 없습니다.")
     with adm_tab3:
         st.subheader("✂️ 예약 정보 수정/삭제")
         col1, col2 = st.columns(2)
