@@ -342,32 +342,51 @@ elif choice == "📅 세대관람 예약":
     with tab2:
         st.subheader("📋 단지별 예약 현황")
         
-        # [수정] 위젯 간 충돌 방지를 위해 key값을 명확히 부여하고, 중복된 selectbox는 제거했습니다.
         sel_dj_view = st.radio("조회 단지 선택", ["1단지", "2단지", "3단지"], horizontal=True, key="view_danji_radio")
-        view_date = st.date_input("조회 일자", date.today(), key="view_date_picker")
+        view_date = st.date_input("조회 일자", today_date, key="view_date_picker") # 상단에서 정의한 today_date 활용
         
+        # --- [실시간 시간 판정용 변수 (tab1과 동일)] ---
+        is_view_today = (view_date == today_date)
+        curr_time_num = int(now.strftime("%H%M")) # 현재 한국 시간 (예: 1105)
+
         try:
-            # 선택한 단지의 시트 가져오기
             ws_view = sheet.worksheet(f"{sel_dj_view}_관람예약")
             d_view = ws_view.get_all_values()
-            
             df_view = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=COL_NAMES)
             
             if not df_view.empty:
-                # 선택한 날짜 데이터만 필터링
                 v_daily = df_view[df_view["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
                 
-                # --- [1] 상단 시간대별 잔여석 상태 카드 표시 ---
+                # --- [1] 상단 시간대별 잔여석 상태 카드 표시 (시간 제한 로직 추가) ---
                 cols = st.columns(len(TIME_SLOTS))
                 for idx, slot in enumerate(TIME_SLOTS):
                     count = len(v_daily[v_daily["예약시간"] == slot])
+                    
+                    # 슬롯별 마감 숫자 계산 (10:00 -> 1030)
+                    start_time_part = slot.split(" ~ ")[0]
+                    sh, sm = map(int, start_time_part.split(":"))
+                    limit_minute = sm + 30
+                    limit_hour = sh
+                    if limit_minute >= 60:
+                        limit_hour += 1
+                        limit_minute -= 60
+                    limit_num = int(f"{limit_hour:02d}{limit_minute:02d}")
+
+                    # --- [마감 판정 로직] ---
+                    is_closed = False
+                    if is_view_today and curr_time_num >= limit_num:
+                        is_closed = True # 시간이 지남
+                    elif count >= 3:
+                        is_closed = True # 인원이 참
+
                     with cols[idx]:
-                        if count >= 3:
+                        if is_closed:
                             color = "#ff4b4b" # 마감 (레드)
                             label = "마감"
                         else:
                             color = "#28a745" # 가능 (그린)
                             label = f"{3-count}석 가능"
+                            
                         st.markdown(f"""
                             <div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px; margin-bottom:10px;">
                                 <small style="font-size:0.7rem;">{slot.split('~')[0]}</small><br>
@@ -375,7 +394,7 @@ elif choice == "📅 세대관람 예약":
                             </div>
                             """, unsafe_allow_html=True)
                 
-                # --- [2] 예약자 성함 마스킹 처리 ---
+                # --- [2] 예약자 성함 마스킹 및 리스트 출력 ---
                 def mask_name(name):
                     if not name or len(name) <= 1: return "*"
                     return name[0] + "*" * (len(name)-1)
@@ -383,12 +402,10 @@ elif choice == "📅 세대관람 예약":
                 if "예약자" in v_daily.columns:
                     v_daily["예약자"] = v_daily["예약자"].apply(mask_name)
                 
-                # 정렬 및 출력
                 v_daily['예약시간'] = pd.Categorical(v_daily['예약시간'], categories=TIME_SLOTS, ordered=True)
                 v_daily = v_daily.sort_values('예약시간')
                 
                 st.divider()
-                # 테이블 출력 (컬럼명 변경 포함)
                 st.dataframe(v_daily[["예약시간", "예약자", "관람세대수", "동호수"]].rename(columns={"동호수":"관람상세"}), 
                              use_container_width=True, hide_index=True)
             else:
