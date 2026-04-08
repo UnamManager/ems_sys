@@ -213,60 +213,41 @@ elif choice == "📅 세대관람 예약":
         st.subheader("📝 세대관람 예약 등록")
         
         # --- [KST 한국 시간 보정 로직] ---
-        # 서버 시간이 UTC일 경우를 대비해 9시간을 더해줍니다.
         from datetime import timedelta, timezone
-        
-        # 타임존을 한국(KST)으로 강제 설정
         KST = timezone(timedelta(hours=9))
-        now = datetime.now(KST) # 현재 한국 시간
-        today_date = now.date() # 한국 날짜
+        now = datetime.now(KST) 
+        today_date = now.date() 
         
         c1, c2 = st.columns(2)
         res_dj = c1.selectbox("단지 선택", ["1단지", "2단지", "3단지"], key="res_dj_select")
-        
-        # 날짜 선택 위젯 (기본값과 최소값을 한국 날짜로 설정)
-        r_date_val = c2.date_input("예약 날짜 선택", 
-                                   value=today_date, 
-                                   min_value=today_date, 
-                                   key="res_date_input")
+        r_date_val = c2.date_input("예약 날짜 선택", value=today_date, min_value=today_date, key="res_date_input")
         
         # --- [시간 필터링 로직] ---
         is_today = (r_date_val == today_date)
         available_slots = []
-        
-        # 현재 시간을 "1105" 같은 숫자로 변환해서 비교하면 가장 정확합니다.
-        curr_time_num = int(now.strftime("%H%M")) # 예: 11시 05분 -> 1105
+        curr_time_num = int(now.strftime("%H%M")) # 현재 한국 시간 (예: 1105)
         
         for slot in TIME_SLOTS:
-            start_time_part = slot.split(" ~ ")[0] # "10:00"
+            start_time_part = slot.split(" ~ ")[0] 
             sh, sm = map(int, start_time_part.split(":"))
-            
-            # 마감 시간 계산 (시작 시간 + 30분)
-            # 10:00 타임의 마감은 10:30 (숫자로 1030)
             limit_minute = sm + 30
             limit_hour = sh
             if limit_minute >= 60:
                 limit_hour += 1
                 limit_minute -= 60
-            
             limit_num = int(f"{limit_hour:02d}{limit_minute:02d}")
             
-            if is_today:
-                # [필터] 현재 한국 시간이 마감 시간(limit_num)보다 크면 제외
-                if curr_time_num >= limit_num:
-                    continue
-            
+            if is_today and curr_time_num >= limit_num:
+                continue
             available_slots.append(slot)
 
-        # 3. 슬롯 유무에 따른 위젯 처리
         if not available_slots:
-            st.error("⏰ 오늘 예약 가능한 모든 시간대가 마감되었습니다. (타임 시작 30분 경과)")
+            st.error("⏰ 오늘 예약 가능한 모든 시간대가 마감되었습니다.")
             can_reserve = False
-            # 빈 셀렉트박스라도 보여주어 에러 방지
             st.selectbox("🕒 관람 시간 (선택 불가)", ["선택 가능한 시간 없음"], disabled=True)
             t_val = "마감"
         else:
-            t_val = st.selectbox("🕒 관람 시간 선택 (시작 30분 전/후 제한)", available_slots, key="res_time_select")
+            t_val = st.selectbox("🕒 관람 시간 선택", available_slots, key="res_time_select")
             can_reserve = True
 
         # 시트 데이터 로드
@@ -280,28 +261,37 @@ elif choice == "📅 세대관람 예약":
         # [필터링] 해당 날짜/시간의 예약 정보
         v_filtered = daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)]
 
-        # --- [최종 예약 차단 조건문] ---
+        # --- [수정된 최종 예약 차단 조건문] ---
         error_msg = ""
+        user_id = st.session_state.user_id
         
-        # 1. 오후 3시 셧다운 (당일 예약건만 해당)
-        if is_today and now.hour >= 15:
-            error_msg = "⏰ 당일 예약은 오후 3시(15:00)에 최종 마감되었습니다."
+        # 1. 오후 3시 40분 셧다운 (당일 예약건만 해당)
+        # 15시 40분 = 1540으로 비교
+        if is_today and curr_time_num >= 1540:
+            error_msg = "⏰ 당일 예약은 오후 3시 40분(15:40)에 최종 마감되었습니다."
             can_reserve = False
         
-        # 2. 본인 중복 예약 체크 (9번째 컬럼: 등록ID 기준)
-        elif not v_filtered.empty and st.session_state.user_id in v_filtered.iloc[:, 8].values:
-            error_msg = "🚫 이미 동일한 시간대에 예약한 내역이 있습니다. (1인 1개 타임만 가능)"
-            can_reserve = False
+        # 2. 본인 중복 예약 체크 (정규표현식 등을 쓰지 않고 간단히 한글 여부 판단)
+        # 아이디의 첫 글자가 한글 범위(가~힣)에 있는지 확인
+        elif can_reserve and not v_filtered.empty:
+            is_korean_id = False
+            if user_id and '가' <= user_id[0] <= '힣':
+                is_korean_id = True
             
-        # 3. 시간대별 3명 정원 체크
-        elif len(v_filtered) >= 3:
+            # 한글 아이디가 아닐 때만(영문/숫자 계정) 중복 체크 작동
+            if not is_korean_id and user_id in v_filtered.iloc[:, 8].values:
+                error_msg = "🚫 이미 동일한 시간대에 예약한 내역이 있습니다. (영문 계정은 1인 1개 타임 제한)"
+                can_reserve = False
+            
+        # 3. 시간대별 3명 정원 체크 (이건 계정 상관없이 공통 적용)
+        if can_reserve and len(v_filtered) >= 3:
             error_msg = f"🚫 {t_val} 타임은 이미 3명이 예약하여 마감되었습니다."
             can_reserve = False
 
         if not can_reserve:
             st.warning(error_msg)
 
-        # --- [매물 선택 위젯] ---
+          # --- [매물 선택 위젯] ---
         f_unit = df_total[df_total["단지"] == res_dj]
         u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
         r_count = st.selectbox("🏠 관람 세대수 (최대 2세대)", [1, 2], key="res_count_select")
