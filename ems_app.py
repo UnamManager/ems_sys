@@ -11,7 +11,7 @@ import time
 # 1. 관리자 전용 설정
 # =========================
 st.set_page_config(page_title="EMS 마스터 관리 시스템", layout="wide")
-ADMIN_PASSWORD_MANAGE = "3214" 
+ADMIN_PASSWORD_MANAGE = "baron3090" 
 
 if "admin_logged_in" not in st.session_state:
     st.title("⚙️ EMS 마스터 로그인")
@@ -58,13 +58,13 @@ df_total = load_admin_data()
 # 🏠 사이드바 및 메뉴
 # =========================
 st.sidebar.title("🛠️ 관리자 메뉴")
-choice = st.sidebar.radio("작업 선택", ["🏠 거래상태 변경", "📅 통합 예약 조회", "✂️ 예약 강제 수정/삭제"])
-if st.sidebar.button("🔄 데이터 강제 갱신"): st.cache_data.clear(); st.rerun()
+choice = st.sidebar.radio("작업 선택", ["🏠 거래상태 변경", "📅 통합 예약 조회", "✂️ 예약 수정/삭제"])
+if st.sidebar.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
 if st.sidebar.button("🔒 로그아웃"): st.session_state.clear(); st.rerun()
 
 # --- [작업 1: 상태 변경] ---
 if choice == "🏠 거래상태 변경":
-    st.title("📍 매물 상태 업데이트")
+    st.title("📍 매물 상태 변경")
     c1, c2, c3 = st.columns(3)
     a_dj = c1.selectbox("단지", ["1단지", "2단지", "3단지"])
     a_dong = c2.text_input("동")
@@ -87,7 +87,7 @@ if choice == "🏠 거래상태 변경":
 
 # --- [작업 2: 통합 조회] ---
 elif choice == "📅 통합 예약 조회":
-    st.title("📅 전체 예약 현황 (마스터)")
+    st.title("📅 전체 예약 현황")
     adm_date = st.date_input("조회 날짜", date.today())
     formatted_date = adm_date.strftime("%Y-%m-%d")
     
@@ -111,8 +111,8 @@ elif choice == "📅 통합 예약 조회":
         if all_res: st.dataframe(pd.concat(all_res), use_container_width=True, hide_index=True)
 
 # --- [작업 3: 마스터 모든 필드 수정/삭제] ---
-elif choice == "✂️ 예약 강제 수정/삭제":
-    st.title("✂️ 예약 정보 마스터 수정 (전체 필드)")
+elif choice == "✂️ 예약 수정/삭제":
+    st.title("✂️ 예약 정보 마스터 수정")
     col1, col2 = st.columns(2)
     d_date = col1.date_input("날짜 선택", date.today())
     d_dj = col2.selectbox("단지 선택", ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"])
@@ -131,7 +131,7 @@ elif choice == "✂️ 예약 강제 수정/삭제":
             curr_r = rows_mod[row_idx-1] # 기존 데이터 (A:1, B:2...)
             
             st.markdown("---")
-            st.warning(f"⚠️ 현재 선택된 행 번호: {row_idx} (구글 시트 기준)")
+            st.warning(f"✅ 현재 선택된 행 번호: {row_idx} (구글 시트 기준)")
             
             with st.form("master_edit_form"):
                 mc1, mc2 = st.columns(2)
@@ -150,15 +150,15 @@ elif choice == "✂️ 예약 강제 수정/삭제":
                 m_memo = st.text_area("📝 비고", value=curr_r[7])
                 
                 c_edit, c_del = st.columns(2)
-                if c_edit.form_submit_button("💾 마스터 권한으로 수정 저장", use_container_width=True):
+                if c_edit.form_submit_button("💾 수정된 내용 저장", use_container_width=True):
                     updated_row = [
                         m_date.strftime("%Y-%m-%d"), m_name, m_agency, 
                         m_count, m_info, m_type, m_time, m_memo, curr_r[8]
                     ]
                     ws_mod.update(f'A{row_idx}:I{row_idx}', [updated_row])
-                    st.success("✅ 모든 정보가 강제 수정되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    st.success("✅ 모든 정보가 수정되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
                 
-                if c_del.form_submit_button("🗑️ 이 예약 강제 삭제", use_container_width=True):
+                if c_del.form_submit_button("🗑️ 예약 삭제", use_container_width=True):
                     ws_mod.delete_rows(row_idx)
                     st.success("🗑️ 해당 예약이 시스템에서 완전히 삭제되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
         else:
