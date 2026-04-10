@@ -13,14 +13,10 @@ import time
 st.set_page_config(page_title="EMS 마스터 관리 시스템", layout="wide")
 ADMIN_PASSWORD_MANAGE = "unam0119" 
 
-# CSS: 신규 매물 강조 스타일 (노란 배경 + 빨간 글씨)
 st.markdown("""
     <style>
     [data-testid="stElementToolbar"] { display: none !important; }
     .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
-    /* 신규 매물 행 전체를 압도적으로 강조 */
-    .highlight-new { background-color: #ffffcc !important; color: #FF0000 !important; font-weight: bold !important; }
-    .stDataFrame [data-testid="stTable"] td { white-space: nowrap; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -29,13 +25,12 @@ if "admin_logged_in" not in st.session_state:
     pw_in = st.text_input("관리자 전용 코드를 입력하세요", type="password")
     if st.button("관리자 인증"):
         if pw_in == ADMIN_PASSWORD_MANAGE:
-            st.session_state.admin_logged_in = True
-            st.rerun()
+            st.session_state.admin_logged_in = True; st.rerun()
         else: st.error("❌ 코드가 올바르지 않습니다.")
     st.stop()
 
 # =========================
-# 🔑 데이터 연결 및 최적화 로직
+# 🔑 데이터 연결
 # =========================
 @st.cache_resource(ttl=3600)
 def get_ems_sheet():
@@ -54,58 +49,52 @@ def load_admin_data_all():
     df_list = []
     for s in sheets:
         try:
-            ws = sheet.worksheet(s)
-            data = ws.get_all_values()
+            ws = sheet.worksheet(s); data = ws.get_all_values()
             if len(data) > 1:
                 df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
-                df["단지"] = s.split("_")[0]
-                df["거래유형"] = s.split("_")[1]
-                
-                # --- 신규 매물 마킹 로직 ---
+                df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
+                # 신규 마킹 로직 유지
                 df['temp_no'] = pd.to_numeric(df['NO.'], errors='coerce')
                 if not df.empty:
                     top_3_val = df['temp_no'].nlargest(3).min()
-                    # 호수 앞에 이모지 추가
                     df['호수'] = df.apply(lambda x: f"🆕 {x['호수']}" if x['temp_no'] >= top_3_val else x['호수'], axis=1)
-                    df['is_new'] = df['temp_no'] >= top_3_val
                 df_list.append(df)
         except: continue
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
 
 df_total = load_admin_data_all()
 
-# [수정] 표 스타일링: 신규는 노란색, 완료는 흐리게
-def apply_admin_style(df):
-    def style_row(row):
-        if "🆕" in str(row['호수']):
-            return ['background-color: #ffffcc; color: #FF0000; font-weight: bold'] * len(row)
-        elif row['거래여부'] == '거래완료':
-            return ['background-color: #f2f2f2; color: #999999'] * len(row)
-        return [''] * len(row)
-    return df.style.apply(style_row, axis=1)
-
 # =========================
 # 🏠 사이드바 및 메뉴
 # =========================
-st.sidebar.title("🛠️ 마스터 관리 메뉴")
-choice = st.sidebar.radio("작업 선택", ["📋 매물 통합 관리", "📅 통합 예약 조회", "✂️ 예약 수정/삭제"])
+st.sidebar.title("🛠️ 마스터 메뉴")
+choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
 if st.sidebar.button("🔄 데이터 새로고침"): st.cache_data.clear(); st.rerun()
 
 # =========================
-# 📋 [메뉴 1] 매물 통합 관리 (기존 통합 대시보드 수정본)
+# 📋 [메뉴 1] 매물 현황 & 관리 (지표 복구)
 # =========================
-if choice == "📋 매물 통합 관리":
-    st.title("📋 매물 통합 관리")
+if choice == "📋 매물 현황 & 관리":
+    st.title("📋 매물 실시간 현황")
     
-    # [수정] 거추장스러운 대시보드 삭제하고 바로 실무 기능으로 진입
-    st.subheader("📍 매물 상태 실시간 업데이트")
+    # --- [복구] 단지별 요약 지표 ---
+    st.subheader("📍 단지별 매물 요약")
+    m1, m2, m3 = st.columns(3)
+    for idx, dj in enumerate(["1단지", "2단지", "3단지"]):
+        dj_df = df_total[df_total["단지"] == dj]
+        can_view = len(dj_df[dj_df["거래여부"] == "관람가능"])
+        total_count = len(dj_df)
+        [m1, m2, m3][idx].metric(dj, f"{can_view} / {total_count}", "관람가능")
+    
+    st.divider()
+    
+    # 상태 업데이트 폼 (동/호수 입력)
     c1, c2, c3 = st.columns(3)
     a_dj = c1.selectbox("단지 선택", ["1단지", "2단지", "3단지"])
     a_dong = c2.text_input("동 입력")
     a_ho = c3.text_input("호수 입력")
 
     if a_dong and a_ho:
-        # 🆕 마크 무시하고 검색 가능하도록
         target = df_total[(df_total["단지"] == a_dj) & (df_total["동"] == a_dong) & (df_total["호수"].str.contains(a_ho))]
         if not target.empty:
             curr = target.iloc[0]
@@ -118,41 +107,47 @@ if choice == "📋 매물 통합 관리":
                     rows = ws.get_all_values()
                     idx = -1
                     for i, r in enumerate(rows):
-                        if len(r) > 3 and r[2] == a_dong and r[3] == a_ho:
-                            idx = i + 1; break
+                        if len(r) > 3 and r[2] == a_dong and r[3] == a_ho: idx = i + 1; break
                     if idx != -1:
                         ws.update(f'I{idx}:J{idx}', [[new_s, new_n]])
-                        st.success("✅ 업데이트 성공!"); st.cache_data.clear(); time.sleep(1); st.rerun()
-        else: st.warning("매물을 찾을 수 없습니다.")
+                        st.success("✅ 저장 성공!"); st.cache_data.clear(); time.sleep(1); st.rerun()
 
-    st.divider()
-    
-    # 통합 매물 목록 (스타일 적용)
-    st.subheader("🏢 전체 매물 목록 (노란색은 신규)")
-    st.dataframe(apply_admin_style(df_total[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), 
-                 use_container_width=True, hide_index=True)
+    st.dataframe(df_total[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]], use_container_width=True, hide_index=True)
 
 # =========================
-# 📅 [메뉴 2/3] 기존 기능 유지
+# 📅 [메뉴 2] 통합 예약 현황판 (형님이 강조하신 석수 표시 복구)
 # =========================
-elif choice == "📅 통합 예약 조회":
-    # (...기존 코드와 동일...)
+elif choice == "📅 통합 예약 현황판":
     st.title("📅 전 단지 예약 현황")
-    search_date = st.date_input("조회 날짜 선택", date.today())
+    search_date = st.date_input("조회 날짜", date.today())
     target_date_str = search_date.strftime("%Y-%m-%d")
-    all_res = []
+    
+    # 단지별 예약 상황 시각화 (개수 표시)
     for dj in ["1단지", "2단지", "3단지"]:
+        st.subheader(f"📍 {dj} 예약 상황")
         try:
-            ws = sheet.worksheet(f"{dj}_관람예약"); data = ws.get_all_values()
-            if len(data) > 1:
-                df = pd.DataFrame(data[1:], columns=data[0])
-                df = df[df["예약날짜"] == target_date_str]
-                df["단지"] = dj; all_res.append(df)
-        except: continue
-    if all_res:
-        full_res_df = pd.concat(all_res, ignore_index=True)
-        st.dataframe(full_res_df[["단지", "예약시간", "예약자", "중개업소", "동호수", "관람세대수"]].sort_values("예약시간"), use_container_width=True, hide_index=True)
-    else: st.info("예약이 없습니다.")
+            ws = sheet.worksheet(f"{dj}_관람예약"); d_view = ws.get_all_values()
+            df_v = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=["예약날짜", "예약시간"])
+            v_daily = df_v[df_v["예약날짜"] == target_date_str]
+            
+            # [복구] 상단 석수(개수) 표시 가로 바
+            cols = st.columns(len(TIME_SLOTS))
+            for idx, slot in enumerate(TIME_SLOTS):
+                count = len(v_daily[v_daily["예약시간"] == slot])
+                with cols[idx]:
+                    color = "#FF4B4B" if count >= 3 else "#28A745"
+                    st.markdown(f"""
+                        <div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px;">
+                        <small>{slot.split('~')[0].strip()}</small><br>
+                        <b style="color:{color};">{count}/3</b>
+                        </div>
+                    """, unsafe_allow_html=True)
+            
+            if not v_daily.empty:
+                st.dataframe(v_daily[["예약시간", "예약자", "중개업소", "동호수", "관람세대수"]].sort_values("예약시간"), use_container_width=True, hide_index=True)
+            else: st.info(f"{dj}에 해당 날짜 예약이 없습니다.")
+            st.divider()
+        except: st.error(f"{dj} 데이터를 불러올 수 없습니다.")
 
 elif choice == "✂️ 예약 수정/삭제":
     # (...기존 마스터 수정 로직 유지...)
