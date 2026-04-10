@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, date, uuid, timedelta, timezone
 import json
 import time
+import uuid
 
 # =========================
 # 1. 관리자 전용 설정
