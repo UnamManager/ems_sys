@@ -11,7 +11,7 @@ import time
 # 1. 관리자 전용 설정
 # =========================
 st.set_page_config(page_title="EMS 마스터 관리 시스템", layout="wide")
-ADMIN_PASSWORD_MANAGE = "baron3090" 
+ADMIN_PASSWORD_MANAGE = "unam0119" 
 
 if "admin_logged_in" not in st.session_state:
     st.title("⚙️ EMS 마스터 로그인")
