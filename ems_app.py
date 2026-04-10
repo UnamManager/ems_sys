@@ -2,10 +2,12 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime, date, uuid, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone  # ← uuid를 여기서 제거
 import json
+import uuid  # ← uuid를 이렇게 따로 한 줄로 빼야 합니다
+import smtplib
 import time
-import uuid
+from email.mime.text import MIMEText
 
 # =========================
 # 1. 관리자 전용 설정
