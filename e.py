@@ -17,71 +17,83 @@ st.markdown("""
     <style>
     [data-testid="stElementToolbar"] { display: none !important; }
     .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
-    /* 신규 매물 강조 스타일 */
-    .new-badge { color: #FF4B4B; font-weight: bold; border: 1px solid #FF4B4B; padding: 2px 5px; border-radius: 4px; font-size: 0.8rem; margin-right: 5px; }
-    .new-text { color: #FF4B4B; font-weight: bold; }
+    .time-card { border-radius: 8px; padding: 5px; text-align: center; margin-bottom: 5px; }
+    .time-card p { margin: 0; font-size: 0.7rem; color: #666; }
+    .time-card strong { font-size: 0.85rem; }
     </style>
     """, unsafe_allow_html=True)
 
 # =========================
-# 🔑 세션 및 데이터 로직
+# 🔑 세션 및 환경 설정
 # =========================
+if "session_key" not in st.session_state: st.session_state["session_key"] = str(uuid.uuid4())
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 if "user_id" not in st.session_state: st.session_state["user_id"] = ""
 
 TIME_SLOTS = ["10:00 ~ 10:45", "11:00 ~ 11:45", "13:00 ~ 13:45", "14:00 ~ 14:45", "15:00 ~ 15:45", "16:00 ~ 16:45", "17:00 ~ 17:45"]
 COL_NAMES = ["예약날짜", "예약자", "중개업소", "관람세대수", "동호수", "타입", "예약시간", "비고", "ID"]
 
+# --- [추가기능: 신규 매물 마킹 로직] ---
+def apply_new_mark(df, top_n=3):
+    try:
+        df['temp_no'] = pd.to_numeric(df['NO.'], errors='coerce')
+        if len(df) > 0:
+            threshold_no = df['temp_no'].nlargest(top_n).min()
+            df['호수'] = df.apply(
+                lambda x: f"🆕 {x['호수']}" if x['temp_no'] >= threshold_no else x['호수'], 
+                axis=1
+            )
+        df = df.drop(columns=['temp_no'])
+    except: pass
+    return df
+
+# =========================
+# 📩 이메일 및 구글 API 연결
+# =========================
 @st.cache_resource(ttl=3600)
-def get_ems_sheet():
+def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = json.loads(st.secrets["GOOGLE_SERVICE_ACCOUNT"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
+    return gspread.authorize(creds)
+
+@st.cache_resource(ttl=3600)
+def get_ems_sheet():
+    client = get_gspread_client()
     return client.open("EMS")
 
 sheet = get_ems_sheet()
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def load_full_data():
-    sheets_to_load = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
-    df_list = []
-    for s in sheets_to_load:
-        try:
-            ws = sheet.worksheet(s); data = ws.get_all_values()
-            if len(data) > 1:
-                df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
-                df["단지"] = s.split("_")[0]
-                df["거래유형"] = s.split("_")[1]
-                # [수정] 각 시트(단지+유형)별로 최신 3개 마킹
-                df['temp_no'] = pd.to_numeric(df['NO.'], errors='coerce')
-                if not df.empty:
-                    top_3_threshold = df['temp_no'].nlargest(3).min()
-                    df['신규여부'] = df['temp_no'] >= top_3_threshold
-                    # 눈에 확 띄게 호수 수정
-                    df['호수'] = df.apply(lambda x: f"★[NEW] {x['호수']}" if x['신규여부'] else x['호수'], axis=1)
-                df_list.append(df)
-        except: continue
-    
-    user_ws = sheet.worksheet("사용자목록"); u_data = user_ws.get_all_values()
-    user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
-    
-    full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
-    return full_df, user_dict
+    try:
+        sheets_to_load = ["1단지_매매","1단지_임대","2단지_매매","2단지_임대","3단지_매매","3단지_임대"]
+        df_list = []
+        for s in sheets_to_load:
+            try:
+                ws = sheet.worksheet(s); data = ws.get_all_values()
+                if len(data) > 1:
+                    df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
+                    df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
+                    df_list.append(df)
+            except: continue
+        
+        user_ws = sheet.worksheet("사용자목록"); u_data = user_ws.get_all_values()
+        user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
+        
+        full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
+        # [신규 매물 적용] 로드 시 최신 3개에 🆕 마킹
+        if not full_df.empty:
+            full_df = apply_new_mark(full_df, top_n=3)
+            
+        return full_df, user_dict
+    except: return pd.DataFrame(), {}
 
 df_total, user_dict = load_full_data()
 
 def apply_style(df):
-    def highlight_new(row):
-        style = [''] * len(row)
-        if "★[NEW]" in str(row['호수']):
-            style = ['color: #FF4B4B; font-weight: bold; background-color: #FFF5F5'] * len(row)
-        elif row['거래여부'] == "거래완료":
-            style = ['background-color: #f8d7da; color: #721c24'] * len(row)
-        elif row['거래여부'] == "관람가능":
-             style = ['background-color: #d4edda; color: #155724'] * len(row)
-        return style
-    return df.style.apply(highlight_new, axis=1)
+    try: return df.style.map(lambda x: "background-color: #d4edda" if "관람가능" in str(x) else "background-color: #f8d7da" if "거래완료" in str(x) else "", subset=["거래여부"])
+    except: return df.style.applymap(lambda x: "background-color: #d4edda" if "관람가능" in str(x) else "background-color: #f8d7da" if "거래완료" in str(x) else "", subset=["거래여부"])
 
 # =========================
 # 🔒 로그인 시스템
@@ -93,45 +105,37 @@ if not st.session_state.logged_in:
         u_pw = st.text_input("비밀번호(PW)", type="password").strip()
         if st.form_submit_button("시스템 접속"):
             if u_id in user_dict and user_dict[u_id] == u_pw:
-                st.session_state.logged_in = True; st.session_state.user_id = u_id; st.rerun()
-            else: st.error("❌ 정보가 일치하지 않습니다.")
+                st.session_state.logged_in = True
+                st.session_state.user_id = u_id
+                st.rerun()
+            else: st.error("❌ 아이디 또는 비밀번호가 일치하지 않습니다.")
     st.stop()
 
 # =========================
-# 🏠 메인 사이드바
+# 🏠 사이드바 메뉴
 # =========================
 menu_options = ["📊 실시간 현황", "🔍 등록 매물 조회", "📅 세대관람 예약"]
 with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 접속 중")
     choice = st.radio("메뉴 이동", menu_options)
+    st.divider()
     if st.button("🔄 새로고침"): st.cache_data.clear(); st.rerun()
     if st.button("🔒 로그아웃"): st.session_state.clear(); st.rerun()
 
 # =========================
-# 📊 [페이지 1] 실시간 현황 (대시보드 신규 추가)
+# 📊 [페이지 1] 실시간 현황
 # =========================
 if choice == "📊 실시간 현황":
     st.title("📊 실시간 현황")
-    
-    # 1. 신규 매물 하이라이트 섹션 (요청 4번)
-    st.subheader("🔥 오늘의 신규 추천 매물")
-    new_items = df_total[df_total['신규여부'] == True].sort_values(by=['단지', '거래유형'])
-    if not new_items.empty:
-        # 가로로 스크롤하거나 나열하기 좋게 카드로 표시
-        cols = st.columns(3)
-        for idx, (_, row) in enumerate(new_items.head(6).iterrows()): # 상위 6개만 노출
-            with cols[idx % 3]:
-                st.info(f"**{row['단지']} {row['거래유형']}**\n\n{row['동']}동 {row['호수'].replace('★[NEW] ', '')}호 ({row['타입']})\n\n💰 {row['매매가'] if row['거래유형']=='매매' else row['월세']}")
-    else:
-        st.write("최근 등록된 신규 매물이 없습니다.")
-    
-    st.divider()
-    
-    # 2. 전체 통계
     c1, c2, c3 = st.columns(3)
-    c1.metric("📌 전체 매물", f"{len(df_total)}개")
-    c2.metric("🏠 관람가능", f"{len(df_total[df_total['거래여부']=='관람가능'])}개")
-    c3.metric("✅ 거래완료", f"{len(df_total[df_total['거래여부']=='거래완료'])}개")
+    c1.metric("📌 전체", f"{len(df_total)}개")
+    c2.metric("✅ 거래완료", f"{len(df_total[df_total['거래여부']=='거래완료'])}개")
+    c3.metric("🏠 관람가능", f"{len(df_total[df_total['거래여부']=='관람가능'])}개")
+    st.divider()
+    df_done = df_total[df_total["거래여부"] == "거래완료"].copy()
+    for col in ["매매가", "월세", "비고"]:
+        if col in df_done.columns: df_done[col] = "🔒 거래완료"
+    st.dataframe(apply_style(df_done[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 # =========================
 # 🔍 [페이지 2] 등록 매물 조회
@@ -139,9 +143,9 @@ if choice == "📊 실시간 현황":
 elif choice == "🔍 등록 매물 조회":
     st.title("🔍 등록 매물 조회")
     f1, f2, f3, f4 = st.columns(4)
-    s_danji = f1.multiselect("단지", ["1단지", "2단지", "3단지"])
+    s_danji = f1.multiselect("단지", df_total["단지"].unique())
     s_bunyang = f2.multiselect("분양구분", df_total["분양구분"].unique())
-    s_gubun = f3.multiselect("매물구분", ["매매", "임대"])
+    s_gubun = f3.multiselect("매물구분", df_total["매물구분"].unique())
     s_type = f4.multiselect("타입", sorted(df_total["타입"].unique()))
     
     c1, c2, _ = st.columns([1,1,2])
@@ -151,18 +155,15 @@ elif choice == "🔍 등록 매물 조회":
     df_v = df_total.copy()
     if s_danji: df_v = df_v[df_v["단지"].isin(s_danji)]
     if s_bunyang: df_v = df_v[df_v["분양구분"].isin(s_bunyang)]
-    if s_gubun: df_v = df_v[df_v["거래유형"].isin(s_gubun)]
+    if s_gubun: df_v = df_v[df_v["매물구분"].isin(s_gubun)]
     if s_type: df_v = df_v[df_v["타입"].isin(s_type)]
     if search_dong: df_v = df_v[df_v["동"].str.contains(search_dong, na=False)]
     if search_ho: df_v = df_v[df_v["호수"].str.contains(search_ho, na=False)]
     
-    # 거래완료 마스킹
     mask = df_v["거래여부"] == "거래완료"
     for col in ["매매가", "월세", "비고"]:
         if col in df_v.columns: df_v.loc[mask, col] = "🔒 거래완료"
-    
-    st.dataframe(apply_style(df_v[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), 
-                 use_container_width=True, hide_index=True)
+    st.dataframe(apply_style(df_v[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 # =========================
 # 📅 [페이지 3] 세대관람 예약
