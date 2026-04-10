@@ -217,9 +217,6 @@ elif choice == "✂️ 예약 수정/삭제":
             row_idx = day_mod.index[opts.index(sel_text)] + 2
             curr_r = rows_mod[row_idx-1]
             
-            st.markdown("---")
-            st.warning(f"✅ 현재 선택된 행 번호: {row_idx} (구글 시트 기준)")
-            
             with st.form("master_edit_form"):
                 mc1, mc2 = st.columns(2)
                 m_date = mc1.date_input("📅 예약날짜", value=datetime.strptime(curr_r[0], "%Y-%m-%d"))
