@@ -98,20 +98,32 @@ if choice == "🏠 통합 대시보드":
                             st.success("✅ 변경 완료!"); st.cache_data.clear(); time.sleep(1); st.rerun()
             else: st.error("매물을 찾을 수 없습니다.")
 
-    # [탭 2: 매물 통합 조회]
     with adm_tab2:
         st.subheader("🔍 전체 매물 실시간 조회")
+        
+        # 1줄: 대분류 필터
         af1, af2, af3, af4 = st.columns(4)
-        as_danji = af1.multiselect("단지 선택", df_total["단지"].unique())
-        as_bunyang = af2.multiselect("분양구분 선택", df_total["분양구분"].unique())
-        as_gubun = af3.multiselect("매물구분 선택", df_total["매물구분"].unique())
-        as_type = af4.multiselect("타입 선택", sorted(df_total["타입"].unique()))
+        as_danji = af1.multiselect("단지 선택", df_total["단지"].unique(), key="adm_s_dj")
+        as_bunyang = af2.multiselect("분양구분 선택", df_total["분양구분"].unique(), key="adm_s_by")
+        as_gubun = af3.multiselect("매물구분 선택", df_total["매물구분"].unique(), key="adm_s_gb")
+        as_type = af4.multiselect("타입 선택", sorted(df_total["타입"].unique()), key="adm_s_tp")
+        
+        # 2줄: 동/호수 상세 검색 (추가된 부분)
+        ac1, ac2, _ = st.columns([1, 1, 2])
+        asearch_dong = ac1.text_input("🏢 동 검색", key="adm_s_dong")
+        asearch_ho = ac2.text_input("🔑 호수 검색", key="adm_s_ho")
         
         df_adm_v = df_total.copy()
+        
+        # 필터링 로직
         if as_danji: df_adm_v = df_adm_v[df_adm_v["단지"].isin(as_danji)]
         if as_bunyang: df_adm_v = df_adm_v[df_adm_v["분양구분"].isin(as_bunyang)]
         if as_gubun: df_adm_v = df_adm_v[df_adm_v["매물구분"].isin(as_gubun)]
         if as_type: df_adm_v = df_adm_v[df_adm_v["타입"].isin(as_type)]
+        
+        # 동/호수 검색 로직 (추가된 부분)
+        if asearch_dong: df_adm_v = df_adm_v[df_adm_v["동"].str.contains(asearch_dong, na=False)]
+        if asearch_ho: df_adm_v = df_adm_v[df_adm_v["호수"].str.contains(asearch_ho, na=False)]
         
         st.dataframe(apply_style(df_adm_v[["단지", "분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), 
                      use_container_width=True, hide_index=True)
