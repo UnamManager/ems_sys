@@ -82,7 +82,6 @@ def load_full_data():
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
         
         full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
-        # [신규 매물 적용] 로드 시 최신 3개에 🆕 마킹
         if not full_df.empty:
             full_df = apply_new_mark(full_df, top_n=3)
             
@@ -170,8 +169,7 @@ elif choice == "🔍 등록 매물 조회":
 # =========================
 elif choice == "📅 세대관람 예약":
     st.title("📋 세대관람 예약 시스템")
-    # 관리자 여부 확인 (예약 등록 탭 구분을 위함)
-    is_admin_user = st.session_state.user_id in ["admin", "master", "unam0119"] # 관리자 아이디 리스트
+    is_admin_user = st.session_state.user_id in ["admin", "master", "unam0119"]
     
     tab1, tab2, tab3 = st.tabs(["📝 예약 등록", "📅 단지별 예약 현황", "🛠️ 내 예약 관리"])
     
@@ -184,7 +182,6 @@ elif choice == "📅 세대관람 예약":
         res_dj = c1.selectbox("단지 선택", ["1단지", "2단지", "3단지"], key="res_dj_select")
         r_date_val = c2.date_input("예약 날짜 선택", value=today_date, key="res_date_input")
         
-        # 시간 슬롯 계산
         is_today = (r_date_val == today_date)
         curr_time_num = int(now.strftime("%H%M"))
         available_slots = []
@@ -192,7 +189,6 @@ elif choice == "📅 세대관람 예약":
             start_time_part = slot.split(" ~ ")[0] 
             sh, sm = map(int, start_time_part.split(":"))
             limit_num = int(f"{sh:02d}{sm+30:02d}") if sm+30 < 60 else int(f"{sh+1:02d}{sm-30:02d}")
-            # 관리자는 시간 제약 없이 모든 슬롯 선택 가능, 일반인은 경과 시간 제외
             if is_admin_user or not (is_today and curr_time_num >= limit_num):
                 available_slots.append(slot)
 
@@ -203,13 +199,11 @@ elif choice == "📅 세대관람 예약":
             t_val = st.selectbox("🕒 관람 시간 선택", available_slots, key="res_time_select")
             can_reserve = True
 
-        # 중복 및 마감 체크
         target_ws = sheet.worksheet(f"{res_dj}_관람예약"); all_res = target_ws.get_all_values()
         daily_df = pd.DataFrame(all_res[1:], columns=all_res[0]) if len(all_res) > 1 else pd.DataFrame(columns=COL_NAMES)
         v_filtered = daily_df[(daily_df["예약날짜"] == r_date_val.strftime("%Y-%m-%d")) & (daily_df["예약시간"] == t_val)]
 
         error_msg = ""; user_id = st.session_state.user_id
-        # 관리자는 15:40 마감 및 인원 제한 무시
         if not is_admin_user:
             if is_today and curr_time_num >= 1540:
                 error_msg = "⏰ 당일 예약은 오후 3시 40분(15:40)에 마감되었습니다."; can_reserve = False
@@ -221,16 +215,21 @@ elif choice == "📅 세대관람 예약":
 
         if error_msg: st.warning(error_msg)
 
-        # 매물 선택 (🆕 마크 제거 후 선택)
-        f_unit = df_total[df_total["단지"] == res_dj]
+        # [핵심 수정: 관람가능 매물만 필터링]
+        f_unit = df_total[(df_total["단지"] == res_dj) & (df_total["거래여부"] == "관람가능")]
         u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+        
+        if f_unit.empty:
+            st.error("현재 해당 단지에 관람 가능한 매물이 없습니다.")
+            can_reserve = False
+        
         r_count = st.selectbox("🏠 관람 세대수", [1, 2], key="res_count_select")
         
         r_items = []
         for i in range(r_count):
             row_c1, row_c2 = st.columns(2)
             sel_d = row_c1.selectbox(f"동 ({i+1})", u_dongs, key=f"r_d_{i}")
-            # 호수 리스트에서 마크 제거 후 표시
+            # 호수 리스트에서도 거래완료는 자동 제외됨
             raw_hos = f_unit[f_unit["동"] == sel_d]["호수"].tolist()
             clean_hos = [h.replace("🆕 ", "") for h in raw_hos]
             sel_h = row_c2.selectbox(f"호수 ({i+1})", clean_hos, key=f"r_h_{i}")
@@ -249,7 +248,6 @@ elif choice == "📅 세대관람 예약":
                 else:
                     combined_info = " / ".join([f"{it['동']}동 {it['호수']}호" for it in r_items])
                     types_str = ", ".join([str(s["타입"]) for s in r_items])
-                    # 관리자 등록 시 ID 뒤에 표기
                     final_id = f"{user_id}(관리자)" if is_admin_user else user_id
                     new_row = [r_date_val.strftime("%Y-%m-%d"), r_name, r_agency, f"{len(r_items)}세대", combined_info, types_str, t_val, memo_input, final_id]
                     target_ws.append_row(new_row)
@@ -265,7 +263,6 @@ elif choice == "📅 세대관람 예약":
         
         if not df_view_tab.empty:
             v_daily = df_view_tab[df_view_tab["예약날짜"] == view_date.strftime("%Y-%m-%d")].copy()
-            # 시간대별 석수 시각화
             cols = st.columns(len(TIME_SLOTS))
             for idx, slot in enumerate(TIME_SLOTS):
                 count = len(v_daily[v_daily["예약시간"] == slot])
@@ -286,7 +283,6 @@ elif choice == "📅 세대관람 예약":
         ws_my = sheet.worksheet(f"{my_dj}_관람예약"); my_data = ws_my.get_all_values()
         if len(my_data) > 1:
             df_my = pd.DataFrame(my_data[1:], columns=my_data[0])
-            # 관리자는 전체 예약 수정 가능, 일반인은 본인 것만
             my_res_only = df_my if is_admin_user else df_my[df_my.iloc[:, 8].str.contains(st.session_state.user_id)]
             
             if not my_res_only.empty:
