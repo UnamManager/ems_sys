@@ -75,19 +75,28 @@ def load_full_data():
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                     df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
+                    
+                    # --- [이 부분이 핵심 수정 사항입니다] ---
+                    # 각 시트(단지/유형)별로 가져올 때마다 바로 신규 마킹을 적용합니다.
+                    # 그래야 각 단지별 매매 3개, 임대 3개씩 총 18개가 🆕 마크를 답니다.
+                    df = apply_new_mark(df, top_n=3)
+                    # --------------------------------------
+                    
                     df_list.append(df)
             except: continue
         
         user_ws = sheet.worksheet("사용자목록"); u_data = user_ws.get_all_values()
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
         
+        # 데이터 합치기
         full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
-        if not full_df.empty:
-            full_df = apply_new_mark(full_df, top_n=3)
+        
+        # 합친 후에는 이미 개별적으로 마킹이 끝났으므로 
+        # 기존에 있던 full_df = apply_new_mark(full_df, top_n=3) 이 줄은 불필요해서 뺀 것입니다.
+        # (합친 후에 또 하면 마크가 꼬일 수 있거든요)
             
         return full_df, user_dict
     except: return pd.DataFrame(), {}
-
 df_total, user_dict = load_full_data()
 
 def apply_style(df):
