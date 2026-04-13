@@ -17,8 +17,8 @@ st.markdown("""
     <style>
     [data-testid="stElementToolbar"] { display: none !important; }
     .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
-    /* 섹션 구분선 스타일 */
-    .section-box { border: 1px solid #ddd; padding: 20px; border-radius: 10px; background-color: #f9f9f9; margin-bottom: 20px; }
+    .section-box { border: 2px solid #4A90E2; padding: 25px; border-radius: 12px; background-color: #ffffff; margin-bottom: 25px; box-shadow: 2px 2px 10px rgba(0,0,0,0.05); }
+    .admin-header { color: #4A90E2; font-weight: bold; border-left: 5px solid #4A90E2; padding-left: 10px; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,7 +58,6 @@ def load_admin_data_all():
                 df['temp_no'] = pd.to_numeric(df['NO.'], errors='coerce')
                 if not df.empty:
                     top_3_val = df['temp_no'].nlargest(3).min()
-                    # 신규 마킹
                     df['호수'] = df.apply(lambda x: f"🆕 {x['호수']}" if x['temp_no'] >= top_3_val else x['호수'], axis=1)
                 df_list.append(df)
         except: continue
@@ -67,10 +66,10 @@ def load_admin_data_all():
 df_total = load_admin_data_all()
 
 # =========================
-# 🏠 사이드바 및 메뉴
+# 🏠 사이드바 및 메뉴 (메뉴 분리)
 # =========================
 st.sidebar.title("🛠️ 마스터 메뉴")
-choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
+choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📝 마스터 예약 등록", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
 if st.sidebar.button("🔄 데이터 새로고침"): st.cache_data.clear(); st.rerun()
 
 # =========================
@@ -89,7 +88,7 @@ if choice == "📋 매물 현황 & 관리":
     st.divider()
     
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
-    st.subheader("⚙️ 매물 상태 변경")
+    st.markdown('<div class="admin-header">⚙️ 매물 상태 변경</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     a_dj = c1.selectbox("변경 단지 선택", ["1단지", "2단지", "3단지"])
     a_dong = c2.text_input("변경 동 입력")
@@ -129,7 +128,87 @@ if choice == "📋 매물 현황 & 관리":
     st.dataframe(df_v[["단지", "분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]], use_container_width=True, hide_index=True)
 
 # =========================
-# 📅 [메뉴 2] 통합 예약 현황판 (+ 관리자 예약 기능 추가)
+# 📝 [메뉴 2] 마스터 예약 등록 (대폭 수정)
+# =========================
+elif choice == "📝 마스터 예약 등록":
+    st.title("📝 마스터 전용 예약 등록")
+    st.info("관리자 권한으로 예약을 강제 등록하는 페이지입니다. '관람가능' 매물만 선택 가능합니다.")
+
+    st.markdown('<div class="section-box">', unsafe_allow_html=True)
+    st.markdown('<div class="admin-header">1. 기본 정보 입력</div>', unsafe_allow_html=True)
+    
+    r1, r2, r3 = st.columns(3)
+    m_dj = r1.selectbox("예약 단지 선택", ["1단지", "2단지", "3단지"])
+    m_date = r2.date_input("예약 날짜", date.today())
+    m_time = r3.selectbox("예약 시간", TIME_SLOTS)
+    
+    r4, r5, r6 = st.columns(3)
+    m_name = r4.text_input("예약자 성함(실명)")
+    m_agency = r5.text_input("중개업소 명칭")
+    m_count = r6.selectbox("관람 세대수 선택", [1, 2])
+    
+    st.divider()
+    st.markdown('<div class="admin-header">2. 관람 세대 선택</div>', unsafe_allow_html=True)
+
+    # 해당 단지의 '관람가능' 매물만 필터링
+    avail_units = df_total[(df_total["단지"] == m_dj) & (df_total["거래여부"] == "관람가능")]
+    u_dongs = sorted(avail_units["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+    
+    m_items = []
+    # 세대수 선택에 따라 입력란이 유동적으로 생성됨
+    for i in range(m_count):
+        st.write(f"**🏠 세대 {i+1} 선택**")
+        c_dong, c_ho = st.columns(2)
+        
+        # 1. 동 선택
+        sel_d = c_dong.selectbox(f"단지 내 동 선택 ({i+1})", u_dongs, key=f"ad_d_{i}")
+        
+        # 2. 선택된 동에 해당하는 호수만 필터링 (동-호수 연동 핵심)
+        hos_in_dong = avail_units[avail_units["동"] == sel_d]["호수"].tolist()
+        clean_hos = [h.replace("🆕 ", "") for h in hos_in_dong]
+        
+        # 3. 호수 선택
+        sel_h = c_ho.selectbox(f"해당 동 내 호수 선택 ({i+1})", clean_hos, key=f"ad_h_{i}")
+        
+        if sel_d and sel_h:
+            m_items.append({"동": sel_d, "호수": sel_h})
+
+    m_memo = st.text_area("비고 (선택사항)")
+    
+    if st.button("📅 예약 최종 강제 등록", use_container_width=True):
+        if not m_name or not m_agency:
+            st.error("❌ 예약자 성함과 중개업소명은 필수 입력 사항입니다.")
+        elif not m_items:
+            st.error("❌ 선택된 세대 정보가 없습니다.")
+        else:
+            try:
+                target_ws = sheet.worksheet(f"{m_dj}_관람예약")
+                combined_ho_str = " / ".join([f"{it['동']}동 {it['호수']}호" for it in m_items])
+                
+                # 첫 번째 호실의 타입 정보 추출
+                first_h = m_items[0]['호수']
+                first_d = m_items[0]['동']
+                match_type = avail_units[(avail_units["동"] == first_d) & (avail_units["호수"].str.contains(first_h))]["타입"].iloc[0]
+                
+                new_row = [
+                    m_date.strftime("%Y-%m-%d"), 
+                    m_name, 
+                    m_agency, 
+                    f"{m_count}세대", 
+                    combined_ho_str, 
+                    match_type, 
+                    m_time, 
+                    m_memo, 
+                    "admin(마스터)"
+                ]
+                target_ws.append_row(new_row)
+                st.success(f"✅ [{m_dj}] {combined_ho_str} 예약이 성공적으로 등록되었습니다."); st.cache_data.clear(); time.sleep(1); st.rerun()
+            except Exception as e:
+                st.error(f"오류 발생: {e}")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# =========================
+# 📅 [메뉴 3] 통합 예약 현황판 (조회 전용으로 깔끔하게)
 # =========================
 elif choice == "📅 통합 예약 현황판":
     st.title("📅 전 단지 예약 현황")
@@ -156,52 +235,8 @@ elif choice == "📅 통합 예약 현황판":
             st.divider()
         except: st.error(f"{dj} 데이터를 불러올 수 없습니다.")
 
-    # --- [신규] 관리자 전용 예약 등록 폼 ---
-    st.markdown('<div class="section-box">', unsafe_allow_html=True)
-    st.subheader("📝 관리자 전용 예약 등록")
-    with st.form("admin_manual_reserve"):
-        r1, r2, r3 = st.columns(3)
-        m_dj = r1.selectbox("예약 단지", ["1단지", "2단지", "3단지"])
-        m_date = r2.date_input("예약 날짜", date.today())
-        m_time = r3.selectbox("예약 시간", TIME_SLOTS)
-        
-        r4, r5, r6 = st.columns(3)
-        m_name = r4.text_input("예약자 성함")
-        m_agency = r5.text_input("중개업소")
-        m_count = r6.selectbox("관람 세대수", [1, 2])
-        
-        # '관람가능' 매물만 필터링해서 선택지 제공
-        avail_units = df_total[(df_total["단지"] == m_dj) & (df_total["거래여부"] == "관람가능")]
-        u_dongs = sorted(avail_units["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-        
-        m_items = []
-        for i in range(m_count):
-            c_dong, c_ho = st.columns(2)
-            sel_d = c_dong.selectbox(f"동 ({i+1})", u_dongs, key=f"ad_d_{i}")
-            raw_hos = avail_units[avail_units["동"] == sel_d]["호수"].tolist()
-            clean_hos = [h.replace("🆕 ", "") for h in raw_hos]
-            sel_h = c_ho.selectbox(f"호수 ({i+1})", clean_hos, key=f"ad_h_{i}")
-            match = avail_units[(avail_units["동"] == sel_d) & (avail_units["호수"].str.contains(sel_h))]
-            if not match.empty: m_items.append(f"{sel_d}동 {sel_h}호")
-            
-        m_memo = st.text_input("비고 (관리자 메모)")
-        
-        if st.form_submit_button("➕ 예약 강제 등록"):
-            if not m_name or not m_agency:
-                st.error("성함과 업소명을 입력하세요.")
-            else:
-                target_ws = sheet.worksheet(f"{m_dj}_관람예약")
-                combined_ho = " / ".join(m_items)
-                # 시트 구조에 맞게 데이터 배열 생성 (예약날짜, 예약자, 중개업소, 관람세대수, 동호수, 타입, 예약시간, 비고, ID)
-                # 타입은 첫번째 선택 호실의 타입을 일단 가져옵니다.
-                first_type = avail_units[avail_units["호수"].str.contains(m_items[0].split(" ")[1])]["타입"].iloc[0] if m_items else ""
-                new_row = [m_date.strftime("%Y-%m-%d"), m_name, m_agency, f"{m_count}세대", combined_ho, first_type, m_time, m_memo, "admin(마스터)"]
-                target_ws.append_row(new_row)
-                st.success("✅ 관리자 예약이 완료되었습니다!"); st.cache_data.clear(); time.sleep(1); st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
 # =========================
-# ✂️ [메뉴 3] 예약 수정/삭제
+# ✂️ [메뉴 4] 예약 수정/삭제
 # =========================
 elif choice == "✂️ 예약 수정/삭제":
     st.title("✂️ 예약 정보 마스터 수정")
