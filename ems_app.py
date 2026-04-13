@@ -68,8 +68,8 @@ df_total = load_admin_data_all()
 # =========================
 # 🏠 사이드바 및 메뉴 (메뉴 분리)
 # =========================
-st.sidebar.title("🛠️ 마스터 메뉴")
-choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📝 마스터 예약 등록", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
+st.sidebar.title("🛠️ 관리자 메뉴")
+choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📝 관리자 예약 등록", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
 if st.sidebar.button("🔄 데이터 새로고침"): st.cache_data.clear(); st.rerun()
 
 # =========================
@@ -130,9 +130,9 @@ if choice == "📋 매물 현황 & 관리":
 # =========================
 # 📝 [메뉴 2] 마스터 예약 등록 (대폭 수정)
 # =========================
-elif choice == "📝 마스터 예약 등록":
-    st.title("📝 마스터 전용 예약 등록")
-    st.info("관리자 권한으로 예약을 강제 등록하는 페이지입니다. '관람가능' 매물만 선택 가능합니다.")
+elif choice == "📝 관리자 예약 등록":
+    st.title("📝 관리자 전용 예약 등록")
+    st.info("관리자 권한으로 예약을 등록하는 페이지입니다. '관람가능' 매물만 선택 가능합니다.")
 
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="admin-header">1. 기본 정보 입력</div>', unsafe_allow_html=True)
@@ -175,7 +175,7 @@ elif choice == "📝 마스터 예약 등록":
 
     m_memo = st.text_area("비고 (선택사항)")
     
-    if st.button("📅 예약 최종 강제 등록", use_container_width=True):
+    if st.button("📅 예약 최종 등록", use_container_width=True):
         if not m_name or not m_agency:
             st.error("❌ 예약자 성함과 중개업소명은 필수 입력 사항입니다.")
         elif not m_items:
@@ -211,7 +211,7 @@ elif choice == "📝 마스터 예약 등록":
 # 📅 [메뉴 3] 통합 예약 현황판 (조회 전용으로 깔끔하게)
 # =========================
 elif choice == "📅 통합 예약 현황판":
-    st.title("📅 전 단지 예약 현황")
+    st.title("📅 세대관람 예약 현황")
     search_date = st.date_input("조회 날짜", date.today())
     target_date_str = search_date.strftime("%Y-%m-%d")
     
@@ -239,7 +239,7 @@ elif choice == "📅 통합 예약 현황판":
 # ✂️ [메뉴 4] 예약 수정/삭제
 # =========================
 elif choice == "✂️ 예약 수정/삭제":
-    st.title("✂️ 예약 정보 마스터 수정")
+    st.title("✂️ 예약 정보 수정")
     col1, col2 = st.columns(2)
     d_date = col1.date_input("날짜 선택", date.today())
     d_dj = col2.selectbox("단지 선택", ["1단지_관람예약", "2단지_관람예약", "3단지_관람예약"])
