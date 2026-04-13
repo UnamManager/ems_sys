@@ -135,14 +135,36 @@ with st.sidebar:
 # =========================
 if choice == "📊 실시간 현황":
     st.title("📊 실시간 현황")
+    
+    # 1. 상단 지표 (Metric)
     c1, c2, c3 = st.columns(3)
-    c1.metric("📌 전체", f"{len(df_total)}개")
+    c1.metric("📌 전체 매물", f"{len(df_total)}개")
     c2.metric("✅ 거래완료", f"{len(df_total[df_total['거래여부']=='거래완료'])}개")
     c3.metric("🏠 관람가능", f"{len(df_total[df_total['거래여부']=='관람가능'])}개")
+    
     st.divider()
+
+    # --- [신규 추가: 신규 등록 매물 리스트 섹션] ---
+    st.subheader("✨ 신규 등록 매물 (단지별 최근 3개)")
+    # '🆕' 마크가 붙은 매물만 필터링해서 보여줍니다.
+    df_new = df_total[df_total["호수"].str.contains("🆕")].copy()
+    
+    if not df_new.empty:
+        # 보기 좋게 단지/동/호수 순으로 정렬
+        df_new_view = df_new.sort_values(["단지", "동", "호수"])[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]
+        st.dataframe(apply_style(df_new_view), use_container_width=True, hide_index=True)
+    else:
+        st.info("현재 신규 매물 표시 데이터가 없습니다.")
+    # -------------------------------------------
+
+    st.divider()
+
+    # 2. 하단 거래완료 매물 리스트
+    st.subheader("🔒 거래완료 매물 내역")
     df_done = df_total[df_total["거래여부"] == "거래완료"].copy()
     for col in ["매매가", "월세", "비고"]:
         if col in df_done.columns: df_done[col] = "🔒 거래완료"
+    
     st.dataframe(apply_style(df_done[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 # =========================
