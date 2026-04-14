@@ -144,17 +144,21 @@ if choice == "📊 실시간 현황":
     
     st.divider()
 
-    # --- [신규 추가: 신규 등록 매물 리스트 섹션] ---
-    st.subheader("✨ 신규 등록 매물 (단지별 최근 3개)")
-    # '🆕' 마크가 붙은 매물만 필터링해서 보여줍니다.
-    df_new = df_total[df_total["호수"].str.contains("🆕")].copy()
+    # --- [수정된 섹션: 신규 등록 매물 리스트] ---
+    st.subheader("✨ 신규 등록 매물 (단지별 최근 3개 중 '관람가능'만)")
+    
+    # [핵심 수정]: '🆕' 마크가 있고 + '거래여부'가 '관람가능'인 데이터만 추출
+    df_new = df_total[
+        (df_total["호수"].str.contains("🆕")) & 
+        (df_total["거래여부"] == "관람가능")
+    ].copy()
     
     if not df_new.empty:
         # 보기 좋게 단지/동/호수 순으로 정렬
         df_new_view = df_new.sort_values(["단지", "동", "호수"])[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]
         st.dataframe(apply_style(df_new_view), use_container_width=True, hide_index=True)
     else:
-        st.info("현재 신규 매물 표시 데이터가 없습니다.")
+        st.info("현재 관람 가능한 신규 매물이 없습니다.")
     # -------------------------------------------
 
     st.divider()
