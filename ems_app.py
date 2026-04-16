@@ -87,6 +87,7 @@ if choice == "📋 매물 현황 & 관리":
     
     st.divider()
     
+    # --- 매물 상태 변경 섹션 (기존 유지) ---
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="admin-header">⚙️ 매물 상태 변경</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
@@ -115,17 +116,33 @@ if choice == "📋 매물 현황 & 관리":
         else: st.warning("해당 매물을 찾을 수 없습니다.")
     st.markdown('</div>', unsafe_allow_html=True)
 
+    # --- 🔍 매물 현황 조회 섹션 (동/호수 검색 추가된 부분) ---
     st.subheader("🔍 매물 현황 조회")
-    f1, f2, f3 = st.columns(3)
+    
+    # 필터 레이아웃 확장 (5컬럼)
+    f1, f2, f3, f4, f5 = st.columns([1.5, 1.5, 1.5, 1, 1])
     f_dj = f1.multiselect("단지 필터", ["1단지", "2단지", "3단지"])
     f_bun = f2.multiselect("분양구분 필터", df_total["분양구분"].unique())
     f_type = f3.multiselect("타입 필터", sorted(df_total["타입"].unique()))
     
+    # 신규 추가: 동/호수 검색란
+    search_dong = f4.text_input("🏢 동 검색")
+    search_ho = f5.text_input("🔑 호수 검색")
+    
     df_v = df_total.copy()
+    
+    # 필터링 로직
     if f_dj: df_v = df_v[df_v["단지"].isin(f_dj)]
     if f_bun: df_v = df_v[df_v["분양구분"].isin(f_bun)]
     if f_type: df_v = df_v[df_v["타입"].isin(f_type)]
-    st.dataframe(df_v[["단지", "분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]], use_container_width=True, hide_index=True)
+    if search_dong: df_v = df_v[df_v["동"].str.contains(search_dong, na=False)]
+    if search_ho: df_v = df_v[df_v["호수"].str.contains(search_ho, na=False)]
+    
+    st.dataframe(
+        df_v[["단지", "분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]], 
+        use_container_width=True, 
+        hide_index=True
+    )
 
 # =========================
 # 📝 [메뉴 2] 마스터 예약 등록 (대폭 수정)
