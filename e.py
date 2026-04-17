@@ -9,7 +9,6 @@ import smtplib
 import time
 from email.mime.text import MIMEText
 
-# =========================
 # 1. 페이지 설정 및 디자인
 # =========================
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
