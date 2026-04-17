@@ -120,14 +120,12 @@ if choice == "📋 매물 현황 & 관리":
     st.subheader("🔍 매물 현황 조회")
     
     # 필터 레이아웃 확장 (5컬럼)
-    f1, f2, f3, f4, f5 = st.columns([1.5, 1.5, 1.5, 1, 1])
+    f1, f2, f3, f4, f5 = st.columns([1.3, 1.3, 1.3, 1.3, 1.3])
     f_dj = f1.multiselect("단지 필터", ["1단지", "2단지", "3단지"])
-    f_bun = f2.multiselect("분양구분 필터", df_total["분양구분"].unique())
-    f_type = f3.multiselect("타입 필터", sorted(df_total["타입"].unique()))
-    
-    # 신규 추가: 동/호수 검색란
-    search_dong = f4.text_input("🏢 동 검색")
-    search_ho = f5.text_input("🔑 호수 검색")
+    f_bun = f4.multiselect("분양구분 필터", df_total["분양구분"].unique())
+    f_type = f5.multiselect("타입 필터", sorted(df_total["타입"].unique()))
+    search_dong = f2.text_input("🏢 동 검색")
+    search_ho = f3.text_input("🔑 호수 검색")
     
     df_v = df_total.copy()
     
