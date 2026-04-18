@@ -249,9 +249,10 @@ elif choice == "📅 세대관람 예약":
 
         if error_msg: st.warning(error_msg)
 
-        # [핵심 수정: 관람가능 매물만 필터링]
         f_unit = df_total[(df_total["단지"] == res_dj) & (df_total["거래여부"] == "관람가능")]
-        u_dongs = sorted(f_unit["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+        
+        # 1. 동 리스트 중복 제거 및 정렬
+        u_dongs = sorted(list(set(f_unit["동"].unique())), key=lambda x: int(x) if x.isdigit() else 0)
         
         if f_unit.empty:
             st.error("현재 해당 단지에 관람 가능한 매물이 없습니다.")
@@ -263,12 +264,16 @@ elif choice == "📅 세대관람 예약":
         for i in range(r_count):
             row_c1, row_c2 = st.columns(2)
             sel_d = row_c1.selectbox(f"동 ({i+1})", u_dongs, key=f"r_d_{i}")
-            # 호수 리스트에서도 거래완료는 자동 제외됨
+            
+            # 2. 특정 동 내의 호수 리스트 추출 후 중복 제거 (핵심!)
             raw_hos = f_unit[f_unit["동"] == sel_d]["호수"].tolist()
-            clean_hos = [h.replace("🆕 ", "") for h in raw_hos]
+            clean_hos = sorted(list(set([h.replace("🆕 ", "") for h in raw_hos])), key=lambda x: int(x) if x.isdigit() else 0)
+            
             sel_h = row_c2.selectbox(f"호수 ({i+1})", clean_hos, key=f"r_h_{i}")
+            
             match = f_unit[(f_unit["동"] == sel_d) & (f_unit["호수"].str.contains(sel_h))]
-            if not match.empty: r_items.append({"동": sel_d, "호수": sel_h, "타입": match.iloc[0]['타입']})
+            if not match.empty: 
+                r_items.append({"동": sel_d, "호수": sel_h, "타입": match.iloc[0]['타입']})
 
         with st.form("reserve_form"):
             r_name = st.text_input("(📝필수) 예약자 성함[실명]")
