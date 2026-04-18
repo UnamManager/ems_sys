@@ -167,22 +167,21 @@ elif choice == "📝 관리자 예약 등록":
 
     # 해당 단지의 '관람가능' 매물만 필터링
     avail_units = df_total[(df_total["단지"] == m_dj) & (df_total["거래여부"] == "관람가능")]
-    u_dongs = sorted(avail_units["동"].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+    
+    # 1. 동 리스트 중복 제거
+    u_dongs = sorted(list(set(avail_units["동"].unique())), key=lambda x: int(x) if x.isdigit() else 0)
     
     m_items = []
-    # 세대수 선택에 따라 입력란이 유동적으로 생성됨
     for i in range(m_count):
         st.write(f"**🏠 세대 {i+1} 선택**")
         c_dong, c_ho = st.columns(2)
         
-        # 1. 동 선택
         sel_d = c_dong.selectbox(f"단지 내 동 선택 ({i+1})", u_dongs, key=f"ad_d_{i}")
         
-        # 2. 선택된 동에 해당하는 호수만 필터링 (동-호수 연동 핵심)
+        # 2. 해당 동 내 호수 추출 및 중복 제거 (핵심!)
         hos_in_dong = avail_units[avail_units["동"] == sel_d]["호수"].tolist()
-        clean_hos = [h.replace("🆕 ", "") for h in hos_in_dong]
+        clean_hos = sorted(list(set([h.replace("🆕 ", "") for h in hos_in_dong])), key=lambda x: int(x) if x.isdigit() else 0)
         
-        # 3. 호수 선택
         sel_h = c_ho.selectbox(f"해당 동 내 호수 선택 ({i+1})", clean_hos, key=f"ad_h_{i}")
         
         if sel_d and sel_h:
