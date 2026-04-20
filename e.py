@@ -9,8 +9,6 @@ import smtplib
 import time
 from email.mime.text import MIMEText
 
-# 1. 페이지 설정 및 디자인
-# =========================
 st.set_page_config(page_title="EMS 통합 관리 시스템", layout="wide")
 st.markdown("""
     <style>
@@ -22,9 +20,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# =========================
-# 🔑 세션 및 환경 설정
-# =========================
 if "session_key" not in st.session_state: st.session_state["session_key"] = str(uuid.uuid4())
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 if "user_id" not in st.session_state: st.session_state["user_id"] = ""
@@ -32,7 +27,6 @@ if "user_id" not in st.session_state: st.session_state["user_id"] = ""
 TIME_SLOTS = ["10:00 ~ 10:45", "11:00 ~ 11:45", "13:00 ~ 13:45", "14:00 ~ 14:45", "15:00 ~ 15:45", "16:00 ~ 16:45", "17:00 ~ 17:45"]
 COL_NAMES = ["예약날짜", "예약자", "중개업소", "관람세대수", "동호수", "타입", "예약시간", "비고", "ID"]
 
-# --- [추가기능: 신규 매물 마킹 로직] ---
 def apply_new_mark(df, top_n=3):
     try:
         df['temp_no'] = pd.to_numeric(df['NO.'], errors='coerce')
@@ -46,9 +40,6 @@ def apply_new_mark(df, top_n=3):
     except: pass
     return df
 
-# =========================
-# 📩 이메일 및 구글 API 연결
-# =========================
 @st.cache_resource(ttl=3600)
 def get_gspread_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -74,10 +65,6 @@ def load_full_data():
                 if len(data) > 1:
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                     df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
-                    
-                    # --- [이 부분이 핵심 수정 사항입니다] ---
-                    # 각 시트(단지/유형)별로 가져올 때마다 바로 신규 마킹을 적용합니다.
-                    # 그래야 각 단지별 매매 3개, 임대 3개씩 총 18개가 🆕 마크를 답니다.
                     df = apply_new_mark(df, top_n=3)
                     # --------------------------------------
                     
@@ -86,14 +73,9 @@ def load_full_data():
         
         user_ws = sheet.worksheet("사용자목록"); u_data = user_ws.get_all_values()
         user_dict = {str(row[0]).strip(): str(row[1]).strip() for row in u_data[1:] if len(row) >= 2}
-        
-        # 데이터 합치기
+
         full_df = pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
         
-        # 합친 후에는 이미 개별적으로 마킹이 끝났으므로 
-        # 기존에 있던 full_df = apply_new_mark(full_df, top_n=3) 이 줄은 불필요해서 뺀 것입니다.
-        # (합친 후에 또 하면 마크가 꼬일 수 있거든요)
-            
         return full_df, user_dict
     except: return pd.DataFrame(), {}
 df_total, user_dict = load_full_data()
@@ -102,9 +84,6 @@ def apply_style(df):
     try: return df.style.map(lambda x: "background-color: #d4edda" if "관람가능" in str(x) else "background-color: #f8d7da" if "거래완료" in str(x) else "", subset=["거래여부"])
     except: return df.style.applymap(lambda x: "background-color: #d4edda" if "관람가능" in str(x) else "background-color: #f8d7da" if "거래완료" in str(x) else "", subset=["거래여부"])
 
-# =========================
-# 🔒 로그인 시스템
-# =========================
 if not st.session_state.logged_in:
     st.title("🔒 EMS 통합 관리 로그인")
     with st.form("login_form"):
@@ -119,8 +98,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # =========================
-# 🏠 사이드바 메뉴
-# =========================
+
 menu_options = ["📊 실시간 현황", "🔍 등록 매물 조회", "📅 세대관람 예약"]
 with st.sidebar:
     st.success(f"👤 {st.session_state.user_id} 접속 중")
@@ -130,7 +108,7 @@ with st.sidebar:
     if st.button("🔒 로그아웃"): st.session_state.clear(); st.rerun()
 
 # =========================
-# 📊 [페이지 1] 실시간 현황
+# 대시보드
 # =========================
 if choice == "📊 실시간 현황":
     st.title("📊 실시간 현황")
@@ -142,18 +120,15 @@ if choice == "📊 실시간 현황":
     c3.metric("🏠 관람가능", f"{len(df_total[df_total['거래여부']=='관람가능'])}개")
     
     st.divider()
-
-    # --- [수정된 섹션: 신규 등록 매물 리스트] ---
+# =====================================================================
     st.subheader("✨ 신규 등록 매물")
-    
-    # [핵심 수정]: '🆕' 마크가 있고 + '거래여부'가 '관람가능'인 데이터만 추출
+
     df_new = df_total[
         (df_total["호수"].str.contains("🆕")) & 
         (df_total["거래여부"] == "관람가능")
     ].copy()
     
     if not df_new.empty:
-        # 보기 좋게 단지/동/호수 순으로 정렬
         df_new_view = df_new.sort_values(["단지", "동", "호수"])[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]
         st.dataframe(apply_style(df_new_view), use_container_width=True, hide_index=True)
     else:
@@ -171,7 +146,7 @@ if choice == "📊 실시간 현황":
     st.dataframe(apply_style(df_done[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 # =========================
-# 🔍 [페이지 2] 등록 매물 조회
+# [페이지 2] 등록 매물 조회
 # =========================
 elif choice == "🔍 등록 매물 조회":
     st.title("🔍 등록 매물 조회")
@@ -199,7 +174,7 @@ elif choice == "🔍 등록 매물 조회":
     st.dataframe(apply_style(df_v[["단지", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]]), use_container_width=True, hide_index=True)
 
 # =========================
-# 📅 [페이지 3] 세대관람 예약
+# [페이지 3] 세대관람 예약
 # =========================
 elif choice == "📅 세대관람 예약":
     st.title("📋 세대관람 예약 시스템")
