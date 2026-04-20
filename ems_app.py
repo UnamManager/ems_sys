@@ -8,8 +8,6 @@ import uuid
 import time
 
 # =========================
-# 1. 관리자 전용 설정
-# =========================
 st.set_page_config(page_title="EMS 마스터 관리 시스템", layout="wide")
 ADMIN_PASSWORD_MANAGE = "unam0119" 
 
@@ -31,8 +29,6 @@ if "admin_logged_in" not in st.session_state:
         else: st.error("❌ 코드가 올바르지 않습니다.")
     st.stop()
 
-# =========================
-# 🔑 데이터 연결
 # =========================
 @st.cache_resource(ttl=3600)
 def get_ems_sheet():
@@ -66,14 +62,13 @@ def load_admin_data_all():
 df_total = load_admin_data_all()
 
 # =========================
-# 🏠 사이드바 및 메뉴 (메뉴 분리)
-# =========================
+
 st.sidebar.title("🛠️ 관리자 메뉴")
 choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📝 관리자 예약 등록", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
 if st.sidebar.button("🔄 데이터 새로고침"): st.cache_data.clear(); st.rerun()
 
 # =========================
-# 📋 [메뉴 1] 매물 현황 & 관리
+# [1] 매물 현황 & 관리
 # =========================
 if choice == "📋 매물 현황 & 관리":
     st.title("📋 매물 실시간 현황")
@@ -116,7 +111,7 @@ if choice == "📋 매물 현황 & 관리":
         else: st.warning("해당 매물을 찾을 수 없습니다.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- 🔍 매물 현황 조회 섹션 (동/호수 검색 추가된 부분) ---
+    # ---
     st.subheader("🔍 매물 현황 조회")
     
     # 필터 레이아웃 확장 (5컬럼)
@@ -143,7 +138,7 @@ if choice == "📋 매물 현황 & 관리":
     )
 
 # =========================
-# 📝 [메뉴 2] 마스터 예약 등록 (대폭 수정)
+# 📝 [2] 예약 등록
 # =========================
 elif choice == "📝 관리자 예약 등록":
     st.title("📝 관리자 전용 예약 등록")
@@ -165,10 +160,8 @@ elif choice == "📝 관리자 예약 등록":
     st.divider()
     st.markdown('<div class="admin-header">2. 관람 세대 선택</div>', unsafe_allow_html=True)
 
-    # 해당 단지의 '관람가능' 매물만 필터링
     avail_units = df_total[(df_total["단지"] == m_dj) & (df_total["거래여부"] == "관람가능")]
     
-    # 1. 동 리스트 중복 제거
     u_dongs = sorted(list(set(avail_units["동"].unique())), key=lambda x: int(x) if x.isdigit() else 0)
     
     m_items = []
@@ -178,7 +171,6 @@ elif choice == "📝 관리자 예약 등록":
         
         sel_d = c_dong.selectbox(f"단지 내 동 선택 ({i+1})", u_dongs, key=f"ad_d_{i}")
         
-        # 2. 해당 동 내 호수 추출 및 중복 제거 (핵심!)
         hos_in_dong = avail_units[avail_units["동"] == sel_d]["호수"].tolist()
         clean_hos = sorted(list(set([h.replace("🆕 ", "") for h in hos_in_dong])), key=lambda x: int(x) if x.isdigit() else 0)
         
@@ -198,8 +190,7 @@ elif choice == "📝 관리자 예약 등록":
             try:
                 target_ws = sheet.worksheet(f"{m_dj}_관람예약")
                 combined_ho_str = " / ".join([f"{it['동']}동 {it['호수']}호" for it in m_items])
-                
-                # 첫 번째 호실의 타입 정보 추출
+
                 first_h = m_items[0]['호수']
                 first_d = m_items[0]['동']
                 match_type = avail_units[(avail_units["동"] == first_d) & (avail_units["호수"].str.contains(first_h))]["타입"].iloc[0]
@@ -222,7 +213,7 @@ elif choice == "📝 관리자 예약 등록":
     st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
-# 📅 [메뉴 3] 통합 예약 현황판 (조회 전용으로 깔끔하게)
+# [3] 통합 예약 현황판
 # =========================
 elif choice == "📅 통합 예약 현황판":
     st.title("📅 세대관람 예약 현황")
@@ -250,7 +241,7 @@ elif choice == "📅 통합 예약 현황판":
         except: st.error(f"{dj} 데이터를 불러올 수 없습니다.")
 
 # =========================
-# ✂️ [메뉴 4] 예약 수정/삭제
+# [4] 예약 수정/삭제
 # =========================
 elif choice == "✂️ 예약 수정/삭제":
     st.title("✂️ 예약 정보 수정")
