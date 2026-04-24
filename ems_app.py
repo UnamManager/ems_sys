@@ -223,22 +223,43 @@ elif choice == "📅 통합 예약 현황판":
     for dj in ["1단지", "2단지", "3단지"]:
         st.subheader(f"📍 {dj} 예약 상황")
         try:
-            ws = sheet.worksheet(f"{dj}_관람예약"); d_view = ws.get_all_values()
-            df_v = pd.DataFrame(d_view[1:], columns=d_view[0]) if len(d_view) > 1 else pd.DataFrame(columns=["예약날짜", "예약시간", "예약자", "중개업소", "동호수", "관람세대수"])
-            v_daily = df_v[df_v["예약날짜"] == target_date_str]
+            ws = sheet.worksheet(f"{dj}_관람예약")
+            d_view = ws.get_all_values()
             
-            cols = st.columns(len(TIME_SLOTS))
-            for idx, slot in enumerate(TIME_SLOTS):
-                count = len(v_daily[v_daily["예약시간"] == slot])
-                with cols[idx]:
-                    color = "#FF4B4B" if count >= 3 else "#28A745"
-                    st.markdown(f'<div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px;"><small>{slot.split("~")[0].strip()}</small><br><b style="color:{color};">{count}/3</b></div>', unsafe_allow_html=True)
-            
-            if not v_daily.empty:
-                st.dataframe(v_daily[["예약시간", "예약자", "중개업소", "동호수", "관람세대수"]].sort_values("예약시간"), use_container_width=True, hide_index=True)
-            else: st.info(f"{dj}에 해당 날짜 예약이 없습니다.")
+            # 데이터가 있을 경우 데이터프레임 생성 (비고 컬럼 포함 확인)
+            if len(d_view) > 1:
+                # 시트의 헤더를 그대로 사용하거나, 구조에 맞춰 정의
+                df_v = pd.DataFrame(d_view[1:], columns=d_view[0])
+                v_daily = df_v[df_v["예약날짜"] == target_date_str]
+                
+                # 시간대별 예약 현황 요약 (상단 대시보드)
+                cols = st.columns(len(TIME_SLOTS))
+                for idx, slot in enumerate(TIME_SLOTS):
+                    count = len(v_daily[v_daily["예약시간"] == slot])
+                    with cols[idx]:
+                        color = "#FF4B4B" if count >= 3 else "#28A745"
+                        st.markdown(f'<div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px;"><small>{slot.split("~")[0].strip()}</small><br><b style="color:{color};">{count}/3</b></div>', unsafe_allow_html=True)
+                
+                # 상세 리스트 출력 (여기에 '비고' 추가)
+                if not v_daily.empty:
+                    # 표에 표시할 컬럼들 정의 (비고가 시트 헤더에 '비고'라고 되어 있어야 함)
+                    display_cols = ["예약시간", "예약자", "중개업소", "동호수", "관람세대수", "비고"]
+                    
+                    # 혹시 시트에 '비고' 컬럼명이 다를 경우를 대비해 실제 존재하는 컬럼만 필터링
+                    actual_cols = [c for c in display_cols if c in v_daily.columns]
+                    
+                    st.dataframe(
+                        v_daily[actual_cols].sort_values("예약시간"), 
+                        use_container_width=True, 
+                        hide_index=True
+                    )
+                else:
+                    st.info(f"{dj}에 해당 날짜 예약이 없습니다.")
+            else:
+                st.info(f"{dj} 시트에 등록된 데이터가 없습니다.")
             st.divider()
-        except: st.error(f"{dj} 데이터를 불러올 수 없습니다.")
+        except Exception as e:
+            st.error(f"{dj} 데이터를 불러오는 중 오류 발생: {e}")
 
 # =========================
 # [4] 예약 수정/삭제
