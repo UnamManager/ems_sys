@@ -96,7 +96,6 @@ if choice == "📋 매물 현황 & 관리":
             curr = target.iloc[0]
             with st.form("status_update"):
                 st.write(f"현재 선택: **{a_dj} {a_dong}동 {curr['호수']}** (상태: {curr['거래여부']})")
-                # [수정사항] '보류' 항목 추가
                 status_list = ["관람가능", "거래완료", "보류"]
                 try:
                     curr_idx = status_list.index(curr["거래여부"])
@@ -161,7 +160,6 @@ elif choice == "📝 관리자 예약 등록":
     st.divider()
     st.markdown('<div class="admin-header">2. 관람 세대 선택</div>', unsafe_allow_html=True)
 
-    # [수정사항] '보류'는 예약 리스트에 나오지 않도록 '관람가능'만 필터링
     avail_units = df_total[(df_total["단지"] == m_dj) & (df_total["거래여부"] == "관람가능")]
     u_dongs = sorted(list(set(avail_units["동"].unique())), key=lambda x: int(x) if x.isdigit() else 0)
     
@@ -222,7 +220,6 @@ elif choice == "📅 통합 예약 현황판":
                         st.markdown(f'<div style="text-align:center; padding:5px; border:1px solid {color}; border-radius:5px;"><small>{slot.split("~")[0].strip()}</small><br><b style="color:{color};">{count}/3</b></div>', unsafe_allow_html=True)
                 
                 if not v_daily.empty:
-                    # 이전 요청사항이었던 '비고' 포함 노출
                     display_cols = ["예약시간", "예약자", "중개업소", "동호수", "관람세대수", "비고"]
                     actual_cols = [c for c in display_cols if c in v_daily.columns]
                     st.dataframe(v_daily[actual_cols].sort_values("예약시간"), use_container_width=True, hide_index=True)
@@ -232,7 +229,7 @@ elif choice == "📅 통합 예약 현황판":
         except: st.error(f"{dj} 데이터를 불러올 수 없습니다.")
 
 # =========================
-# [4] 예약 수정/삭제 (요청하신 고도화 반영)
+# [4] 예약 수정/삭제 (동-호수 연동 필터링 보강)
 # =========================
 elif choice == "✂️ 예약 수정/삭제":
     st.title("✂️ 예약 정보 수정")
@@ -253,8 +250,8 @@ elif choice == "✂️ 예약 수정/삭제":
             selected_row_data = day_mod.iloc[opts.index(sel_text)]
             row_idx = int(selected_row_data.name) + 2 
             
-            # [수정사항] 수정 항목 확대 및 Selectbox 방식 적용
-            with st.form("master_edit_v3"):
+            # --- 수정 폼 시작 ---
+            with st.form("master_edit_final"):
                 st.write(f"📍 현재 선택: **{sel_text}**")
                 
                 e_c1, e_c2 = st.columns(2)
@@ -266,7 +263,7 @@ elif choice == "✂️ 예약 수정/삭제":
                 m_count = e_c4.selectbox("세대수 수정", [1, 2], index=0 if "1세대" in str(selected_row_data['관람세대수']) else 1)
                 
                 st.divider()
-                st.write("🏠 **관람 세대 정보 수정 (등록된 매물만 선택 가능)**")
+                st.write("🏠 **관람 세대 정보 수정 (동 선택 시 해당 동 호수만 표시)**")
                 
                 # 해당 단지 관람가능 매물 추출 (보류 제외)
                 avail_units_edit = df_total[(df_total["단지"] == d_dj_prefix) & (df_total["거래여부"] == "관람가능")]
@@ -276,8 +273,11 @@ elif choice == "✂️ 예약 수정/삭제":
                 for i in range(m_count):
                     st.write(f"세대 {i+1}")
                     sc1, sc2 = st.columns(2)
+                    
+                    # [동 선택]
                     sel_d = sc1.selectbox(f"동 ({i+1})", u_dongs_edit, key=f"ed_d_{i}")
                     
+                    # [호수 선택] 동 선택 값(sel_d)에 따라 실시간 필터링
                     hos_in_dong = avail_units_edit[avail_units_edit["동"] == sel_d]["호수"].tolist()
                     clean_hos = sorted(list(set([h.replace("🆕 ", "") for h in hos_in_dong])), key=lambda x: int(x) if x.isdigit() else 0)
                     sel_h = sc2.selectbox(f"호수 ({i+1})", clean_hos, key=f"ed_h_{i}")
@@ -292,8 +292,6 @@ elif choice == "✂️ 예약 수정/삭제":
                 if col_btn1.form_submit_button("✅ 수정 내용 저장"):
                     combined_ho = " / ".join([f"{it['동']}동 {it['호수']}호" for it in new_items_edit])
                     combined_type = ", ".join([str(it['타입']) for it in new_items_edit])
-                    
-                    # B:예약자, C:중개업소, D:관람세대수, E:동호수, F:타입, G:예약시간, H:비고
                     update_row = [[m_name, m_agency, f"{m_count}세대", combined_ho, combined_type, m_time, m_memo]]
                     ws_mod.update(f'B{row_idx}:H{row_idx}', update_row)
                     st.success("✅ 수정 성공!"); st.cache_data.clear(); time.sleep(1); st.rerun()
