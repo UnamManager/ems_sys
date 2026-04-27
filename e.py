@@ -224,7 +224,18 @@ elif choice == "📅 세대관람 예약":
 
         if error_msg: st.warning(error_msg)
 
+        # 1. 예약 가능한 매물 추출 (보류/거래완료 제외)
         f_unit = df_total[(df_total["단지"] == res_dj) & (df_total["거래여부"] == "관람가능")]
+        
+        # 2. 스타일 적용 함수 수정 (보류 색상 추가 - 노란색 계열)
+        def apply_style(df):
+            def _style_row(val):
+                if "관람가능" in str(val): return "background-color: #d4edda" # 초록
+                elif "거래완료" in str(val): return "background-color: #f8d7da" # 빨강
+                elif "보류" in str(val): return "background-color: #fff3cd" # 노랑/주황
+                return ""
+            try: return df.style.map(_style_row, subset=["거래여부"])
+            except: return df.style.applymap(_style_row, subset=["거래여부"])
         
         # 1. 동 리스트 중복 제거 및 정렬
         u_dongs = sorted(list(set(f_unit["동"].unique())), key=lambda x: int(x) if x.isdigit() else 0)
