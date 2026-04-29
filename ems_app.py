@@ -17,6 +17,7 @@ st.markdown("""
     .stButton>button { width: 100%; height: 3em; border-radius: 8px; font-weight: bold; }
     .section-box { border: 2px solid #4A90E2; padding: 25px; border-radius: 12px; background-color: #ffffff; margin-bottom: 25px; box-shadow: 2px 2px 10px rgba(0,0,0,0.05); }
     .admin-header { color: #4A90E2; font-weight: bold; border-left: 5px solid #4A90E2; padding-left: 10px; margin-bottom: 20px; }
+    .stat-card { background-color: #f8f9fa; padding: 15px; border-radius: 10px; border: 1px solid #dee2e6; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -52,9 +53,6 @@ def load_admin_data_all():
                 df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                 df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
                 df['temp_no'] = pd.to_numeric(df['NO.'], errors='coerce')
-                if not df.empty:
-                    top_3_val = df['temp_no'].nlargest(3).min()
-                    df['호수'] = df.apply(lambda x: f"🆕 {x['호수']}" if x['temp_no'] >= top_3_val else x['호수'], axis=1)
                 df_list.append(df)
         except: continue
     return pd.concat(df_list, ignore_index=True) if df_list else pd.DataFrame()
@@ -64,7 +62,8 @@ df_total = load_admin_data_all()
 # =========================
 
 st.sidebar.title("🛠️ 관리자 메뉴")
-choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📝 관리자 예약 등록", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
+# 통계 기능 메뉴 추가
+choice = st.sidebar.radio("작업 선택", ["📋 매물 현황 & 관리", "📊 데이터 요약 통계", "📝 관리자 예약 등록", "📅 통합 예약 현황판", "✂️ 예약 수정/삭제"])
 if st.sidebar.button("🔄 데이터 새로고침"): st.cache_data.clear(); st.rerun()
 
 # =========================
@@ -72,6 +71,7 @@ if st.sidebar.button("🔄 데이터 새로고침"): st.cache_data.clear(); st.r
 # =========================
 if choice == "📋 매물 현황 & 관리":
     st.title("📋 매물 실시간 현황")
+    # (기존 코드 생략 - 위에서 주신 내용과 동일하게 유지)
     st.subheader("📍 단지별 매물 요약")
     m1, m2, m3 = st.columns(3)
     for idx, dj in enumerate(["1단지", "2단지", "3단지"]):
@@ -131,10 +131,64 @@ if choice == "📋 매물 현황 & 관리":
     st.dataframe(df_v[["단지", "분양구분", "동", "호수", "타입", "매물구분", "매매가", "월세", "거래여부", "비고"]], use_container_width=True, hide_index=True)
 
 # =========================
-# 📝 [2] 예약 등록
+# [NEW]📊 데이터 요약 통계
+# =========================
+elif choice == "📊 데이터 요약 통계":
+    st.title("📊 매물 데이터 요약 통계")
+    st.info("보고서 작성용 수치 통계입니다. 상가는 단지별 집계에서 제외하고 별도 합산합니다.")
+    
+    # 데이터 분리 (상가 vs 아파트)
+    df_apt = df_total[df_total["타입"] != "상가"]
+    df_sang = df_total[df_total["타입"] == "상가"]
+    
+    # --- 첫 번째 통계: 등록 건수 ---
+    st.subheader("1️⃣ 매물 등록 건수 (매매 / 임대)")
+    c1, c2, c3, c4 = st.columns(4)
+    
+    with c1:
+        st.markdown('<div class="stat-card"><b>🏢 1단지 아파트</b><br>' + 
+                    f"매매: {len(df_apt[(df_apt['단지']=='1단지') & (df_apt['거래유형']=='매매')])}건<br>" +
+                    f"임대: {len(df_apt[(df_apt['단지']=='1단지') & (df_apt['거래유형']=='임대')])}건</div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown('<div class="stat-card"><b>🏢 2단지 아파트</b><br>' + 
+                    f"매매: {len(df_apt[(df_apt['단지']=='2단지') & (df_apt['거래유형']=='매매')])}건<br>" +
+                    f"임대: {len(df_apt[(df_apt['단지']=='2단지') & (df_apt['거래유형']=='임대')])}건</div>", unsafe_allow_html=True)
+    with c3:
+        st.markdown('<div class="stat-card"><b>🏢 3단지 아파트</b><br>' + 
+                    f"매매: {len(df_apt[(df_apt['단지']=='3단지') & (df_apt['거래유형']=='매매')])}건<br>" +
+                    f"임대: {len(df_apt[(df_apt['단지']=='3단지') & (df_apt['거래유형']=='임대')])}건</div>", unsafe_allow_html=True)
+    with c4:
+        st.markdown('<div class="stat-card"><b>🏪 상가 전체</b><br>' + 
+                    f"매매: {len(df_sang[df_sang['거래유형']=='매매'])}건<br>" +
+                    f"임대: {len(df_sang[df_sang['거래유형']=='임대'])}건</div>", unsafe_allow_html=True)
+
+    st.write("")
+    
+    # --- 두 번째 통계: 거래 완료 건수 ---
+    st.subheader("2️⃣ 거래 완료 현황")
+    v1, v2, v3, v4, v5 = st.columns(5)
+    
+    v1.metric("1단지 완료", f"{len(df_apt[(df_apt['단지']=='1단지') & (df_apt['거래여부']=='거래완료')])}건")
+    v2.metric("2단지 완료", f"{len(df_apt[(df_apt['단지']=='2단지') & (df_apt['거래여부']=='거래완료')])}건")
+    v3.metric("3단지 완료", f"{len(df_apt[(df_apt['단지']=='3단지') & (df_apt['거래여부']=='거래완료')])}건")
+    v4.metric("상가 완료", f"{len(df_sang[df_sang['거래여부']=='거래완료'])}건")
+    
+    total_done = len(df_total[df_total['거래여부']=='거래완료'])
+    v5.metric("전체 총 합계", f"{total_done}건", delta_color="normal")
+
+    st.divider()
+    # 참고용 상세 표
+    if st.checkbox("상세 통계 데이터 표 보기"):
+        st.write("타입별 등록 현황")
+        type_stats = df_total.groupby(['단지', '타입', '거래유형']).size().reset_index(name='건수')
+        st.dataframe(type_stats, use_container_width=True)
+
+# =========================
+# [2] 예약 등록 (기존 유지)
 # =========================
 elif choice == "📝 관리자 예약 등록":
     st.title("📝 관리자 전용 예약 등록")
+    # ... (생략: 기존 코드와 동일)
     st.info("관리자 권한으로 예약을 등록하는 페이지입니다. '관람가능' 매물만 선택 가능합니다.")
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
     st.markdown('<div class="admin-header">1. 기본 정보 입력</div>', unsafe_allow_html=True)
