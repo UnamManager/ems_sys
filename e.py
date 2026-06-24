@@ -27,6 +27,20 @@ if "user_id" not in st.session_state: st.session_state["user_id"] = ""
 TIME_SLOTS = ["10:00 ~ 10:45", "11:00 ~ 11:45", "13:00 ~ 13:45", "14:00 ~ 14:45", "15:00 ~ 15:45", "16:00 ~ 16:45", "17:00 ~ 17:45"]
 COL_NAMES = ["예약날짜", "예약자", "중개업소", "관람세대수", "동호수", "타입", "예약시간", "비고", "ID"]
 
+# 공지사항 출력 함수 (반복 사용을 위해 분리)
+def show_notice():
+    st.error("""
+    📢 **EMS 서비스 종료 안내**
+    
+    안녕하세요, EMS 통합 관리 시스템 관리자입니다.
+    그동안 저희 서비스를 이용해 주시고 성원해 주신 모든 분들께 진심으로 감사드립니다.
+    
+    본 EMS 서비스는 **2026년 6월 30일부로 종료**될 예정입니다. 
+    종료일 이후에는 시스템 접속 및 데이터 조회가 불가능하오니, 필요한 정보가 있으실 경우 미리 확인 및 백업을 부탁드립니다.
+    
+    그동안 함께해 주셔서 진심으로 감사했습니다.
+    """)
+
 def apply_new_mark(df, top_n=3):
     try:
         df['temp_no'] = pd.to_numeric(df['NO.'], errors='coerce')
@@ -66,8 +80,6 @@ def load_full_data():
                     df = pd.DataFrame(data[1:], columns=["NO.","분양구분","동","호수","타입","매물구분","매매가","월세","거래여부", "비고"])
                     df["단지"] = s.split("_")[0]; df["거래유형"] = s.split("_")[1]
                     df = apply_new_mark(df, top_n=3)
-                    # --------------------------------------
-                    
                     df_list.append(df)
             except: continue
         
@@ -84,7 +96,13 @@ def apply_style(df):
     try: return df.style.map(lambda x: "background-color: #d4edda" if "관람가능" in str(x) else "background-color: #f8d7da" if "거래완료" in str(x) else "", subset=["거래여부"])
     except: return df.style.applymap(lambda x: "background-color: #d4edda" if "관람가능" in str(x) else "background-color: #f8d7da" if "거래완료" in str(x) else "", subset=["거래여부"])
 
+# =====================================================================
+# 로그인 전 화면 (공지사항 상단 배치)
+# =====================================================================
 if not st.session_state.logged_in:
+    show_notice() # <-- 로그인 페이지 상단 공지사항 추가
+    st.divider()
+    
     st.title("🔒 EMS 통합 관리 로그인")
     with st.form("login_form"):
         u_id = st.text_input("아이디(ID)").strip()
@@ -108,9 +126,12 @@ with st.sidebar:
     if st.button("🔒 로그아웃"): st.session_state.clear(); st.rerun()
 
 # =========================
-# 대시보드
+# [페이지 1] 대시보드 (실시간 현황)
 # =========================
 if choice == "📊 실시간 현황":
+    show_notice() # <-- 실시간 현황 페이지 최상단 공지사항 추가
+    st.divider()
+    
     st.title("📊 실시간 현황")
     
     # 1. 상단 지표 (Metric)
@@ -120,7 +141,6 @@ if choice == "📊 실시간 현황":
     c3.metric("🏠 관람가능", f"{len(df_total[df_total['거래여부']=='관람가능'])}개")
     
     st.divider()
-# =====================================================================
     st.subheader("✨ 신규 등록 매물")
 
     df_new = df_total[
@@ -133,7 +153,6 @@ if choice == "📊 실시간 현황":
         st.dataframe(apply_style(df_new_view), use_container_width=True, hide_index=True)
     else:
         st.info("현재 관람 가능한 신규 매물이 없습니다.")
-    # -------------------------------------------
 
     st.divider()
 
@@ -224,20 +243,17 @@ elif choice == "📅 세대관람 예약":
 
         if error_msg: st.warning(error_msg)
 
-        # 1. 예약 가능한 매물 추출 (보류/거래완료 제외)
         f_unit = df_total[(df_total["단지"] == res_dj) & (df_total["거래여부"] == "관람가능")]
         
-        # 2. 스타일 적용 함수 수정 (보류 색상 추가 - 노란색 계열)
         def apply_style(df):
             def _style_row(val):
-                if "관람가능" in str(val): return "background-color: #d4edda" # 초록
-                elif "거래완료" in str(val): return "background-color: #f8d7da" # 빨강
-                elif "보류" in str(val): return "background-color: #fff3cd" # 노랑/주황
+                if "관람가능" in str(val): return "background-color: #d4edda"
+                elif "거래완료" in str(val): return "background-color: #f8d7da"
+                elif "보류" in str(val): return "background-color: #fff3cd"
                 return ""
             try: return df.style.map(_style_row, subset=["거래여부"])
             except: return df.style.applymap(_style_row, subset=["거래여부"])
         
-        # 1. 동 리스트 중복 제거 및 정렬
         u_dongs = sorted(list(set(f_unit["동"].unique())), key=lambda x: int(x) if x.isdigit() else 0)
         
         if f_unit.empty:
@@ -251,7 +267,6 @@ elif choice == "📅 세대관람 예약":
             row_c1, row_c2 = st.columns(2)
             sel_d = row_c1.selectbox(f"동 ({i+1})", u_dongs, key=f"r_d_{i}")
             
-            # 2. 특정 동 내의 호수 리스트 추출 후 중복 제거 (핵심!)
             raw_hos = f_unit[f_unit["동"] == sel_d]["호수"].tolist()
             clean_hos = sorted(list(set([h.replace("🆕 ", "") for h in raw_hos])), key=lambda x: int(x) if x.isdigit() else 0)
             
